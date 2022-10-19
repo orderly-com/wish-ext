@@ -1,0 +1,118 @@
+{% load static thumbnail humanize bootstrap_pagination _filters tz i18n %}
+
+<div class="col-md-6">
+
+    {# 瀏覽資訊 #}
+    <div class="panel panel-white">
+
+        <div class="panel-heading">
+            <h5 class="panel-title">瀏覽資訊</h5>
+            <div class="heading-elements"></div>
+        </div>
+
+        <table class="table" id="read_profile">
+
+            <tr class="row">
+                <td class="col-md-4">瀏覽排名</td>
+                <td class="col-md-8">
+                    {% if clientbase.wish_info.reading_rank %}
+                        <div class="">
+                            <span>#</span>
+                            <span class="text-semibold text-yellow h1">{{ clientbase.wish_info.reading_rank|floatformat:0|int_format }}</span>
+                        </div>
+                    {% else %}
+                        <div>--</div>
+                    {% endif %}
+
+                </td>
+            </tr>
+
+            <tr class="row">
+                <td class="col-md-4">加入時間</td>
+                <td class="col-md-8" id="join_date">
+                    <div class="">{{ clientbase.join_datetime|date:"Y-m-d" }}</div>
+                    <div class="text-muted">約 <span id="join_data">{{ clientbase.join_datetime|trans_duration }}</span> 前</div>
+                </td>
+            </tr>
+
+            <tr class="row">
+                <td>首次閱讀</td>
+                <td id="first_read_date">
+                    {% if clientbase.wish_info.first_read is not None %}
+                        <div class="">{{ clientbase.wish_info.first_read|date:"Y-m-d" }}</div>
+                        <div class="text-muted">約 <span id="first_read_data">{{ clientbase.wish_info.first_read|trans_duration }}</span> 前</div>
+                    {% else %}
+                        <div>暫無瀏覽紀錄</div>
+                    {% endif %}
+                </td>
+            </tr>
+
+            <tr class="row">
+                <td>最近閱讀</td>
+                <td id="last_read_date">
+                    {% if clientbase.wish_info.last_read is not None %}
+                        <div class="">{{ clientbase.wish_info.last_read|date:"Y-m-d" }}</div>
+                        <div class="text-muted">約 <span id="last_read_data">{{ clientbase.wish_info.last_read|trans_duration }}</span> 前</div>
+                    {% else %}
+                        <div>暫無瀏覽紀錄</div>
+                    {% endif %}
+                </td>
+            </tr>
+
+            <tr class="row">
+                <td>瀏覽次數</td>
+                <td>
+                    <div class="">{{ clientbase.wish_info.get_times_of_read }} 次</div>
+                </td>
+            </tr>
+
+            <tr class="row">
+                <td>累計瀏覽</td>
+                <td>
+                    <div class="">{{ clientbase.wish_info.get_sum_of_total_read|floatformat:2 }} 篇</div>
+                </td>
+            </tr>
+
+            <tr class="row">
+                <td>平均瀏覽比率</td>
+                <td>
+                    <div class="">{{ clientbase.wish_info.get_avg_of_each_read|percent:1 }} %</div>
+                </td>
+            </tr>
+
+            <tr class="row">
+                <td>瀏覽文章總數</td>
+                <td>
+                    <div class="">共 {{ clientbase.wish_info.get_count_of_total_article }} 篇</div>
+                </td>
+            </tr>
+
+        </table>
+    </div>
+
+</div>
+
+<div class="col-md-6">
+
+
+    {# 瀏覽分析 #}
+    <div class="panel panel-white">
+
+        <div class="panel-heading">
+            <h5 class="panel-title">瀏覽分析</h5>
+            <div class="heading-elements"></div>
+        </div>
+
+        <div class="panel-body text-center">
+
+            <!-- <div class="text-semibold text-yellow h1">{{ clientbase.get_fast_segmentation|display_fast_segmentation }}</div> -->
+
+        </div>
+
+        <table class="table">
+
+        </table>
+
+    </div>
+
+</div>
