@@ -54,9 +54,10 @@ class LevelLog(BaseModel):
 class Event(BaseModel):
     class Meta:
         indexes = [
-            models.Index(fields=['title', ]),
+            models.Index(fields=['cost_type', ]),
+            models.Index(fields=['ticket_type', ]),
 
-            models.Index(fields=['team', 'title']),
+            models.Index(fields=['ticket_type', 'cost_type']),
         ]
 
     team = models.ForeignKey(Team, blank=False, on_delete=models.CASCADE)
