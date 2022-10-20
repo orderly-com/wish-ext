@@ -24,7 +24,7 @@ def process_articlelist(team_slug, data):
     except KeyError:
         raise EssentialDataMissing('data')
 
-    importer = ArticleImporter(team, datasource)
+    importer = LevelImporter(team, datasource)
 
     datalist = importer.create_datalist(rows)
     datalist.set_step(DataList.STEP_CREATE_RAW_RECORDS)
