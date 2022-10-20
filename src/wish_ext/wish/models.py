@@ -54,10 +54,8 @@ class LevelLog(BaseModel):
 class Event(BaseModel):
     class Meta:
         indexes = [
-            models.Index(fields=['datasource', ]),
             models.Index(fields=['title', ]),
 
-            models.Index(fields=['team', 'datasource']),
             models.Index(fields=['team', 'title']),
         ]
 
