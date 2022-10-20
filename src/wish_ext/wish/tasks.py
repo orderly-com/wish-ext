@@ -21,3 +21,7 @@ from .datahub import DataTypeSyncReadingData
 from .models import WishInfo, ArticleBase
 
 from ..extension import wish_ext
+
+@wish_ext.periodic_task()
+def sync_clientbase_level(**kwargs):
+    pass

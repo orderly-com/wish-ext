@@ -40,25 +40,15 @@ class MemberLevel(BaseModel):
 class LevelLog(BaseModel):
 
     team = models.ForeignKey(Team, blank=False, on_delete=models.CASCADE)
-    event = models.ForeignKey(Event, related_name='logs')
+    from_level = models.ForeignKey(Level, related_name='to_logs')
+    to_level = models.ForeignKey(Level, related_name='from_logs')
     clientbase = models.ForeignKey(ClientBase)
     datetime = models.DateTimeField(null=True)
+    from_datetime = models.DateTimeField(null=True)
+    to_datetime = models.DateTimeField(null=True)
 
-    ACTION_CLAIM = 'claim'
-    ACTION_USE = 'use'
+    source_type = models.CharField(max_length=128)
 
-    ACTION_CHOICES = (
-        (ACTION_CLAIM, '領取'),
-        (ACTION_USE, '使用'),
-    )
-
-    cost_type = models.CharField(
-        choices=ACTION_CHOICES,
-        default=ACTION_CLAIM,
-        max_length=64,
-        blank=False,
-        null=False,
-    )
 
 
 class Event(BaseModel):
