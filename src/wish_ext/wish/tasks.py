@@ -17,9 +17,6 @@ from core.utils import run
 
 from cerem.tasks import insert_to_cerem, aggregate_from_cerem
 
-from .datahub import DataTypeSyncReadingData
-from .models import WishInfo, ArticleBase
-
 from ..extension import wish_ext
 
 @wish_ext.periodic_task()
