@@ -8,8 +8,6 @@ from importly.models import DataList
 from config.celery import app
 from team.models import Team
 
-from .importers import ArticleImporter
-
 @app.task(time_limit=settings.APP_TASK_TIME_LIMIT_SM)
 def process_articlelist(team_slug, data):
     team = Team.objects.get(slug=team_slug)
