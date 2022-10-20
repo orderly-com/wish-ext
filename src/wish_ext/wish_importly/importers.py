@@ -12,6 +12,4 @@ from importly.formatters import (
 from datahub.data_flows import handle_data
 from datahub.models import Field, FieldGroup, ChoiceField, PrimaryField
 
-from ..wish.datahub import channels, DataTypeArticle, DataTypeRead
-
 from .formatters import format_dict
