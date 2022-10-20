@@ -112,7 +112,7 @@ class EventLog(BaseModel):
 class WishInfo(BaseModel):
 
     clientbase = models.OneToOneField(ClientBase, related_name='wish_info', blank=False, on_delete=models.CASCADE)
-    level = models.ForeignKey(MemberLevel, related_name='clientbases', null=True, blank=True)
+    level = models.ForeignKey(MemberLevel, related_name='clientbases', null=True, blank=True, on_delete=models.CASCADE)
 
     def __getattr__(self, attr):
         if attr == 'readbase_set':
