@@ -86,8 +86,8 @@ class Event(BaseModel):
 class EventLog(BaseModel):
 
     team = models.ForeignKey(Team, blank=False, on_delete=models.CASCADE)
-    event = models.ForeignKey(Event, related_name='logs')
-    clientbase = models.ForeignKey(ClientBase)
+    event = models.ForeignKey(Event, related_name='logs', on_delete=models.CASCADE)
+    clientbase = models.ForeignKey(ClientBase, on_delete=models.CASCADE)
     datetime = models.DateTimeField(null=True)
 
     ACTION_CLAIM = 'claim'
