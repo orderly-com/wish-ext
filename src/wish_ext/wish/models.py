@@ -40,8 +40,8 @@ class MemberLevel(BaseModel):
 class LevelLog(BaseModel):
 
     team = models.ForeignKey(Team, blank=False, on_delete=models.CASCADE)
-    from_level = models.ForeignKey(Level, related_name='to_logs')
-    to_level = models.ForeignKey(Level, related_name='from_logs')
+    from_level = models.ForeignKey(MemberLevel, related_name='to_logs')
+    to_level = models.ForeignKey(MemberLevel, related_name='from_logs')
     clientbase = models.ForeignKey(ClientBase)
     datetime = models.DateTimeField(null=True)
     from_datetime = models.DateTimeField(null=True)
