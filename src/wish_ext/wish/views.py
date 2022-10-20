@@ -14,8 +14,6 @@ from core.utils import TeamAuthPermission, ForestTimer, array_to_dict, make_date
 
 from team.views import TeamMixin
 
-from .models import ArticleBase
-
 from ..extension import wish_ext
 
 wish_router = wish_ext.router('wish/', name='wish')
