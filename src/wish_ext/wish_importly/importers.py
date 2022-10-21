@@ -13,7 +13,6 @@ from datahub.data_flows import handle_data
 from datahub.models import Field, FieldGroup, ChoiceField, PrimaryField
 
 from ..wish.datahub import DataTypeLevel, DataTypeLevelLog, DataTypeEvent, DataTypeEventLog
-from ..wish.models import ArticleBase, ArticleCategory
 
 from .formatters import format_dict
 from .models import Level, LovelLog, Event, EventLog
@@ -24,7 +23,7 @@ class LevelImporter(DataImporter):
     data_type = DataTypeLevel
 
     class DataTransfer:
-        class ArticleTransfer:
+        class LevelTransfer:
             model = Level
 
             external_id = Formatted(str, 'id')
@@ -47,7 +46,7 @@ class LevelLogImporter(DataImporter):
     data_type = DataTypeLevelLog
 
     class DataTransfer:
-        class ArticleTransfer:
+        class LevelLogTransfer:
             model = LevelLog
 
             external_id = Formatted(str, 'id')
@@ -72,12 +71,12 @@ class LevelLogImporter(DataImporter):
     attributions = Field('等級記錄屬性', group=group_level_log, is_attributions=True)
 
 
-class EventImporter(DataImporter):
+class LevelImporter(DataImporter):
 
     data_type = DataTypeLevel
 
     class DataTransfer:
-        class ArticleTransfer:
+        class LevelTransfer:
             model = Level
 
             external_id = Formatted(str, 'id')
@@ -102,7 +101,7 @@ class EventLogImporter(DataImporter):
     data_type = DataTypeLevelLog
 
     class DataTransfer:
-        class ArticleTransfer:
+        class EventLogTransfer:
             model = LevelLog
 
             external_id = Formatted(str, 'id')
