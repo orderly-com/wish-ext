@@ -44,7 +44,7 @@ class LevelImporter(DataImporter):
     def process_raw_records(self):
 
         level_map = {}
-        for level in self.team.levelbase_set.values('id', 'external_id', 'rank', 'name', 'attributions'):
+        for level in self.team.memberlevelbase_set.values('id', 'external_id', 'rank', 'name', 'attributions'):
             level_map[level['external_id']] = LevelBase(**level)
 
         levels = self.datalist.level_set.values('external_id', 'rank', 'name', 'attributions')
