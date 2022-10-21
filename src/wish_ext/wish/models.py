@@ -90,7 +90,7 @@ class EventBase(BaseModel):
 class EventLogBase(BaseModel):
 
     team = models.ForeignKey(Team, blank=False, on_delete=models.CASCADE)
-    event = models.ForeignKey(Event, related_name='logs', on_delete=models.CASCADE)
+    event = models.ForeignKey(EventBase, related_name='logs', on_delete=models.CASCADE)
     clientbase = models.ForeignKey(ClientBase, on_delete=models.CASCADE)
     datetime = models.DateTimeField(null=True)
 
