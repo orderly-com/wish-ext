@@ -54,7 +54,7 @@ class LevelImporter(DataImporter):
             external_id = level['external_id']
             if external_id in level_map:
                 levelbase = level_map[external_id]
-                if level.id:
+                if levelbase.id:
                     levels_to_update.add(levelbase)
                 levelbase.attributions.update(level['attributions'])
                 levelbase.rank = level['rank']
