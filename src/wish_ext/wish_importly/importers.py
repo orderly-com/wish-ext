@@ -135,7 +135,7 @@ class EventImporter(DataImporter):
             external_id = event['external_id']
             if external_id in event_map:
                 eventbase = event_map[external_id]
-                if event.id:
+                if eventbase.id:
                     events_to_update.add(eventbase)
                 eventbase.attributions.update(event['attributions'])
                 eventbase.ticket_type = event['ticket_type']
