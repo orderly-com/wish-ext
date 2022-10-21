@@ -13,5 +13,4 @@ class WishExtension(Extension):
 wish_ext = WishExtension()
 
 wish_ext.client_info_panel_templates = [
-    'team/clients/_wish_info.html'
 ]
