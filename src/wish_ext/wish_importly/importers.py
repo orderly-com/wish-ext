@@ -139,8 +139,8 @@ class EventImporter(DataImporter):
                     events_to_update.add(eventbase)
                 eventbase.attributions.update(event['attributions'])
                 eventbase.ticket_type = event['ticket_type']
-                eventbase.name = eventbase['name']
-                eventbase.cost_type = eventbase['cost_type']
+                eventbase.name = event['name']
+                eventbase.cost_type = event['cost_type']
             else:
                 event = EventBase(**event, team_id=self.team.id)
                 events_to_create.append(event)
