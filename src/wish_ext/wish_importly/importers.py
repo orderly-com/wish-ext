@@ -124,10 +124,10 @@ class EventImporter(DataImporter):
     def process_raw_records(self):
 
         event_map = {}
-        for event in self.team.eventbase_set.values('id', 'external_id', 'rank', 'name', 'cost_type', 'attributions'):
+        for event in self.team.eventbase_set.values('id', 'external_id', 'ticket_type', 'name', 'cost_type', 'attributions'):
             event_map[event['external_id']] = LevelBase(**event)
 
-        events = self.datalist.event_set.values('external_id', 'rank', 'name', 'attributions', 'cost_type')
+        events = self.datalist.event_set.values('external_id', 'ticket_type', 'name', 'attributions', 'cost_type')
         events_to_create = []
         events_to_update = set()
         for event in events:
@@ -137,14 +137,14 @@ class EventImporter(DataImporter):
                 if event.id:
                     events_to_update.add(eventbase)
                 eventbase.attributions.update(event['attributions'])
-                eventbase.rank = event['rank']
+                eventbase.ticket_type = event['ticket_type']
                 eventbase.name = eventbase['name']
                 eventbase.cost_type = eventbase['cost_type']
             else:
                 event = EventBase(**event)
                 events_to_create.append(event)
                 event_map[external_id] = event
-        update_fields = ['rank', 'name', 'attributions', 'cost_type']
+        update_fields = ['ticket_type', 'name', 'attributions', 'cost_type']
         EventBase.objects.bulk_create(events_to_create, batch_size=settings.BATCH_SIZE_M)
         EventBase.objects.bulk_update(events_to_update, update_fields, batch_size=settings.BATCH_SIZE_M)
 
