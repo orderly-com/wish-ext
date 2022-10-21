@@ -126,7 +126,7 @@ class EventImporter(DataImporter):
 
         event_map = {}
         for event in self.team.eventbase_set.values('id', 'external_id', 'ticket_type', 'name', 'cost_type', 'attributions'):
-            event_map[event['external_id']] = LevelBase(**event)
+            event_map[event['external_id']] = MemberLevelBase(**event)
 
         events = self.datalist.event_set.values('external_id', 'ticket_type', 'name', 'attributions', 'cost_type')
         events_to_create = []

@@ -12,8 +12,6 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('team', '0001_initial'),
-        ('importly', '0001_initial'),
-        ('datahub', '0002_auto_20221021_1254'),
     ]
 
     operations = [
