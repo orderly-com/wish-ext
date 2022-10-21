@@ -6,7 +6,7 @@ from django.db.models import Min
 
 from importly.importers import DataImporter
 from importly.formatters import (
-    Formatted, format_datetime, format_int
+    Formatted, format_datetime, format_int, format_bool
 )
 
 from datahub.data_flows import handle_data
@@ -15,7 +15,7 @@ from datahub.models import Field, FieldGroup, ChoiceField, PrimaryField
 from ..wish.datahub import DataTypeLevel, DataTypeLevelLog, DataTypeEvent, DataTypeEventLog, DataTypePointLog
 from ..wish.models import EventBase, MemberLevelBase, LevelLogBase, EventLogBase
 
-from .formatters import format_dict, format_bool
+from .formatters import format_dict
 from .models import Level, LevelLog, Event, EventLog, PointLog
 
 
