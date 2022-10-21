@@ -118,6 +118,8 @@ class LevelLog(RawModel):
 
 class PointLog(RawModel):
 
+    external_id = models.TextField(null=True)
+    team = models.ForeignKey(Team, blank=False, on_delete=models.CASCADE)
     point_name = models.TextField(blank=False)
     clientbase_external_id = models.TextField(blank=False)
     datetime = models.DateTimeField(null=True)

@@ -13,7 +13,7 @@ from datahub.data_flows import handle_data
 from datahub.models import Field, FieldGroup, ChoiceField, PrimaryField
 
 from ..wish.datahub import DataTypeLevel, DataTypeLevelLog, DataTypeEvent, DataTypeEventLog, DataTypePointLog
-from ..wish.models import EventBase, MemberLevelBase, LevelLogBase, EventLogBase
+from ..wish.models import EventBase, MemberLevelBase, LevelLogBase, EventLogBase, PointLogBase
 
 from .formatters import format_dict
 from .models import Level, LevelLog, Event, EventLog, PointLog
@@ -214,7 +214,7 @@ class PointLogImporter(DataImporter):
             external_id = Formatted(str, 'id')
 
             point_name = Formatted(str, 'point_name')
-            member_id = Formatted(str, 'member_id')
+            clientbase_external_id = Formatted(str, 'member_id')
             amount = Formatted(format_int, 'amount')
             is_transaction = Formatted(format_bool, 'is_transaction')
             datetime = Formatted(format_datetime, 'datetime')
@@ -235,7 +235,7 @@ class PointLogImporter(DataImporter):
 
         pointlog_map = {}
         for log in self.team.pointlogbase_set.values(
-            'id', 'external_id', 'point_name', 'clientbase_external_id',
+            'id', 'external_id', 'point_name',
             'datetime', 'amount', 'attributions', 'is_transaction'
         ):
             pointlog_map[log['external_id']] = PointLogBase(**log)
@@ -253,8 +253,8 @@ class PointLogImporter(DataImporter):
         for log in logs:
             external_id = log['external_id']
             clientbase_external_id = log.pop('clientbase_external_id')
-            if external_id in log_map:
-                logbase = log_map[external_id]
+            if external_id in pointlog_map:
+                logbase = pointlog_map[external_id]
                 if logbase.id:
                     logs_to_update.add(logbase)
                 logbase.attributions.update(log['attributions'])
@@ -268,7 +268,7 @@ class PointLogImporter(DataImporter):
                     continue
                 log = PointLogBase(**log, team_id=self.team.id, clientbase_id=clientbase_id)
                 logs_to_create.append(log)
-                log_map[external_id] = log
-        update_fields = ['point_name', 'name', 'attributions', 'amount', 'is_transaction', 'datetime']
+                pointlog_map[external_id] = log
+        update_fields = ['point_name', 'attributions', 'amount', 'is_transaction', 'datetime']
         PointLogBase.objects.bulk_create(logs_to_create, batch_size=settings.BATCH_SIZE_M)
         PointLogBase.objects.bulk_update(logs_to_update, update_fields, batch_size=settings.BATCH_SIZE_M)

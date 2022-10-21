@@ -122,6 +122,7 @@ class EventLogBase(BaseModel):
 
 class PointLogBase(BaseModel):
 
+    external_id = models.TextField(null=True)
     team = models.ForeignKey(Team, blank=False, on_delete=models.CASCADE)
     point_name = models.TextField(blank=False)
     clientbase = models.ForeignKey(ClientBase, on_delete=models.CASCADE)
