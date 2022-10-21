@@ -12,11 +12,11 @@ from importly.formatters import (
 from datahub.data_flows import handle_data
 from datahub.models import Field, FieldGroup, ChoiceField, PrimaryField
 
-from ..wish.datahub import DataTypeLevel, DataTypeLevelLog, DataTypeEvent, DataTypeEventLog
+from ..wish.datahub import DataTypeLevel, DataTypeLevelLog, DataTypeEvent, DataTypeEventLog, DataTypePointLog
 from ..wish.models import EventBase, MemberLevelBase, LevelLogBase, EventLogBase
 
-from .formatters import format_dict
-from .models import Level, LevelLog, Event, EventLog
+from .formatters import format_dict, format_bool
+from .models import Level, LevelLog, Event, EventLog, PointLog
 
 
 class LevelImporter(DataImporter):
@@ -174,3 +174,101 @@ class EventLogImporter(DataImporter):
     datetime = Field('時間', group=group_event_log)
     action = Field('領取/使用', group=group_event_log)
     attributions = Field('活動記錄屬性', group=group_event_log, is_attributions=True)
+
+    def process_raw_records(self):
+
+        event_map = {}
+        for event in self.team.eventlog.values('id', 'external_id', 'ticket_type', 'name', 'cost_type', 'attributions'):
+            event_map[event['external_id']] = EventBase(**event)
+
+        events = self.datalist.event_set.values('external_id', 'ticket_type', 'name', 'attributions', 'cost_type')
+        events_to_create = []
+        events_to_update = set()
+        for event in events:
+            external_id = event['external_id']
+            if external_id in event_map:
+                eventbase = event_map[external_id]
+                if eventbase.id:
+                    events_to_update.add(eventbase)
+                eventbase.attributions.update(event['attributions'])
+                eventbase.ticket_type = event['ticket_type']
+                eventbase.name = event['name']
+                eventbase.cost_type = event['cost_type']
+            else:
+                event = EventBase(**event, team_id=self.team.id)
+                events_to_create.append(event)
+                event_map[external_id] = event
+        update_fields = ['ticket_type', 'name', 'attributions', 'cost_type']
+        EventBase.objects.bulk_create(events_to_create, batch_size=settings.BATCH_SIZE_M)
+        EventBase.objects.bulk_update(events_to_update, update_fields, batch_size=settings.BATCH_SIZE_M)
+
+
+class PointLogImporter(DataImporter):
+
+    data_type = DataTypePointLog
+
+    class DataTransfer:
+        class EventLogTransfer:
+            model = PointLog
+
+            external_id = Formatted(str, 'id')
+
+            point_name = Formatted(str, 'point_name')
+            member_id = Formatted(str, 'member_id')
+            amount = Formatted(format_int, 'amount')
+            is_transaction = Formatted(format_bool, 'is_transaction')
+            datetime = Formatted(format_datetime, 'datetime')
+            attributions = Formatted(dict, 'attributions')
+
+    group_event_log = FieldGroup(key='EVENTLOG', name='活動記錄')
+
+    id = PrimaryField('記錄編號', required=True, group=group_event_log)
+    point_name = Field('活動編號', group=group_event_log)
+    member_id = Field('會員ID', group=group_event_log)
+    datetime = Field('時間', group=group_event_log)
+    amount = Field('領取/使用', group=group_event_log)
+    attributions = Field('活動記錄屬性', group=group_event_log, is_attributions=True)
+
+    is_transaction = Field('交易/非交易', group=group_event_log)
+
+    def process_raw_records(self):
+
+        pointlog_map = {}
+        for log in self.team.pointlogbase_set.values(
+            'id', 'external_id', 'point_name', 'clientbase_external_id',
+            'datetime', 'amount', 'attributions', 'is_transaction'
+        ):
+            pointlog_map[log['external_id']] = PointLogBase(**log)
+
+        clientbase_map = {}
+        for clientbase_id, external_id in self.team.clientbase_set.filter(removed=False).values_list('id', 'external_id'):
+            clientbase_map[external_id] = clientbase_id
+
+        logs = self.datalist.pointlog_set.values(
+            'external_id', 'point_name', 'clientbase_external_id', 'datetime',
+            'amount', 'attributions', 'is_transaction'
+        )
+        logs_to_create = []
+        logs_to_update = set()
+        for log in logs:
+            external_id = log['external_id']
+            clientbase_external_id = log.pop('clientbase_external_id')
+            if external_id in log_map:
+                logbase = log_map[external_id]
+                if logbase.id:
+                    logs_to_update.add(logbase)
+                logbase.attributions.update(log['attributions'])
+                logbase.point_name = log['point_name']
+                logbase.datetime = log['datetime']
+                logbase.is_transaction = log['is_transaction']
+                logbase.amount = log['amount']
+            else:
+                clientbase_id = clientbase_map.get(clientbase_external_id)
+                if not clientbase_id:
+                    continue
+                log = PointLogBase(**log, team_id=self.team.id, clientbase_id=clientbase_id)
+                logs_to_create.append(log)
+                log_map[external_id] = log
+        update_fields = ['point_name', 'name', 'attributions', 'amount', 'is_transaction', 'datetime']
+        PointLogBase.objects.bulk_create(logs_to_create, batch_size=settings.BATCH_SIZE_M)
+        PointLogBase.objects.bulk_update(logs_to_update, update_fields, batch_size=settings.BATCH_SIZE_M)

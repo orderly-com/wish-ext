@@ -50,6 +50,7 @@ class Event(RawModel):
 
 class EventLog(RawModel):
 
+    external_id = models.TextField(null=True)
     team = models.ForeignKey(Team, blank=False, on_delete=models.CASCADE)
     event_external_id = models.TextField(blank=False)
     clientbase_external_id = models.TextField(blank=False)
@@ -100,6 +101,7 @@ class Level(RawModel):
 
 class LevelLog(RawModel):
 
+    external_id = models.TextField(null=True)
     team = models.ForeignKey(Team, blank=False, on_delete=models.CASCADE)
     from_level_id = models.TextField(blank=False)
     to_level_id = models.TextField(blank=False)
@@ -112,3 +114,15 @@ class LevelLog(RawModel):
     attributions = JSONField(blank=True, null=True)
 
     datasource = models.ForeignKey(DataSource, blank=False, on_delete=models.CASCADE)
+
+
+class PointLog(RawModel):
+
+    point_name = models.TextField(blank=False)
+    clientbase_external_id = models.TextField(blank=False)
+    datetime = models.DateTimeField(null=True)
+    amount = models.IntegerField(default=0) # 1
+
+    is_transaction = models.BooleanField(default=False)
+
+    attributions = JSONField(blank=True, null=True)

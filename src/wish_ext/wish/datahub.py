@@ -19,3 +19,6 @@ class DataTypeEvent(DataType):
 
 class DataTypeEventLog(DataType):
     key = 'event_log'
+
+class DataTypePointLog(DataType):
+    key = 'point_log'

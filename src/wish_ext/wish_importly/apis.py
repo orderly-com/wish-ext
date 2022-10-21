@@ -10,7 +10,7 @@ from rest_framework import status
 from external_app.models import ExternalAppApiKey
 
 from ..extension import wish_ext
-from .tasks import process_eventlist, process_levellist, process_eventloglist, process_levelloglist
+from .tasks import process_eventlist, process_levellist, process_eventloglist, process_levelloglist, process_pointloglist
 
 class APIImportBaseView(APIView):
     permission_classes = [AllowAny]

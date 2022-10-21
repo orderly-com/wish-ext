@@ -8,7 +8,7 @@ from importly.models import DataList
 from config.celery import app
 from team.models import Team
 
-from .importers import LevelImporter, LevelLogImporter, EventImporter, EventLogImporter
+from .importers import LevelImporter, LevelLogImporter, EventImporter, EventLogImporter, PointLogImporter
 
 
 def process_datalist(team_slug, data, importer_cls):
@@ -57,3 +57,8 @@ def process_eventlist(team_slug, data):
 @app.task(time_limit=settings.APP_TASK_TIME_LIMIT_SM)
 def process_eventloglist(team_slug, data):
     process_datalist(team_slug, data, EventLogImporter)
+
+
+@app.task(time_limit=settings.APP_TASK_TIME_LIMIT_SM)
+def process_pointloglist(team_slug, data):
+    process_datalist(team_slug, data, PointLogImporter)
