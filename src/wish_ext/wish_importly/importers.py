@@ -97,6 +97,34 @@ class LevelLogImporter(DataImporter):
     to_datetime = Field('等級到期時間', group=group_level_log)
     attributions = Field('等級記錄屬性', group=group_level_log, is_attributions=True)
 
+    def process_raw_records(self):
+
+        level_map = {}
+        for external_id, level_id in self.team.memberlevelbase_set.values_list('external_id', 'id'):
+            level_map[external_id] = level_id
+
+        clientbase_map = {}
+        for clientbase_id, external_id in self.team.clientbase_set.filter(removed=False).values_list('id', 'external_id'):
+            clientbase_map[external_id] = clientbase_id
+
+        logs = self.datalist.levellog_set.values(
+            'from_level_id', 'to_level_id', 'datetime',
+            'clientbase_external_id', 'attributions', 'from_datetime', 'to_datetime'
+        )
+        logs_to_create = []
+        for log in logs:
+            from_level_id = log.pop('from_level_id')
+            to_level_id = log.pop('to_level_id')
+            clientbase_external_id = log.pop('clientbase_external_id')
+            log['from_level_id'] = level_map.get(from_level_id)
+            log['to_level_id'] = level_map.get(to_level_id)
+            clientbase_id = clientbase_map.get(clientbase_external_id)
+            if not clientbase_id:
+                continue
+            logs_to_create.append(LevelLogBase(**log, clientbase_id=clientbase_id, team_id=self.team.id))
+
+        LevelLogBase.objects.bulk_create(logs_to_create, batch_size=settings.BATCH_SIZE_M)
+
 
 class EventImporter(DataImporter):
 
@@ -152,11 +180,11 @@ class EventImporter(DataImporter):
 
 class EventLogImporter(DataImporter):
 
-    data_type = DataTypeLevelLog
+    data_type = DataTypeEventLog
 
     class DataTransfer:
         class EventLogTransfer:
-            model = LevelLog
+            model = EventLog
 
             external_id = Formatted(str, 'id')
 
@@ -178,29 +206,28 @@ class EventLogImporter(DataImporter):
     def process_raw_records(self):
 
         event_map = {}
-        for event in self.team.eventlog.values('id', 'external_id', 'ticket_type', 'name', 'cost_type', 'attributions'):
-            event_map[event['external_id']] = EventBase(**event)
+        for external_id, event_id in self.team.memberlevelbase_set.values_list('external_id', 'id'):
+            event_map[external_id] = event_id
 
-        events = self.datalist.event_set.values('external_id', 'ticket_type', 'name', 'attributions', 'cost_type')
-        events_to_create = []
-        events_to_update = set()
-        for event in events:
-            external_id = event['external_id']
-            if external_id in event_map:
-                eventbase = event_map[external_id]
-                if eventbase.id:
-                    events_to_update.add(eventbase)
-                eventbase.attributions.update(event['attributions'])
-                eventbase.ticket_type = event['ticket_type']
-                eventbase.name = event['name']
-                eventbase.cost_type = event['cost_type']
-            else:
-                event = EventBase(**event, team_id=self.team.id)
-                events_to_create.append(event)
-                event_map[external_id] = event
-        update_fields = ['ticket_type', 'name', 'attributions', 'cost_type']
-        EventBase.objects.bulk_create(events_to_create, batch_size=settings.BATCH_SIZE_M)
-        EventBase.objects.bulk_update(events_to_update, update_fields, batch_size=settings.BATCH_SIZE_M)
+        clientbase_map = {}
+        for clientbase_id, external_id in self.team.clientbase_set.filter(removed=False).values_list('id', 'external_id'):
+            clientbase_map[external_id] = clientbase_id
+
+        logs = self.datalist.eventlog_set.values(
+            'event_external_id', 'action', 'datetime',
+            'clientbase_external_id', 'attributions'
+        )
+        logs_to_create = []
+        for log in logs:
+            event_id = log.pop('event_external_id')
+            clientbase_external_id = log.pop('clientbase_external_id')
+            log['event_id'] = event_map.get(event_id)
+            clientbase_id = clientbase_map.get(clientbase_external_id)
+            if not clientbase_id:
+                continue
+            logs_to_create.append(LevelLogBase(**log, clientbase_id=clientbase_id, team_id=self.team.id))
+
+        LevelLogBase.objects.bulk_create(logs_to_create, batch_size=settings.BATCH_SIZE_M)
 
 
 class PointLogImporter(DataImporter):
@@ -208,7 +235,7 @@ class PointLogImporter(DataImporter):
     data_type = DataTypePointLog
 
     class DataTransfer:
-        class EventLogTransfer:
+        class PointLogTransfer:
             model = PointLog
 
             external_id = Formatted(str, 'id')
