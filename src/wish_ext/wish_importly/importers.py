@@ -40,6 +40,32 @@ class LevelImporter(DataImporter):
     rank = Field('階級數字', group=group_level)
     attributions = Field('等級屬性', group=group_level, is_attributions=True)
 
+    def process_raw_records(self):
+
+        level_map = {}
+        for level in self.team.levelbase_set.values('id', 'external_id', 'rank', 'name', 'attributions'):
+            level_map[level['external_id']] = LevelBase(**level)
+
+        levels = self.datalist.level_set.values('external_id', 'rank', 'name', 'attributions')
+        levels_to_create = []
+        levels_to_update = set()
+        for level in levels:
+            external_id = level['external_id']
+            if external_id in level_map:
+                levelbase = level_map[external_id]
+                if level.id:
+                    levels_to_update.add(levelbase)
+                levelbase.attributions.update(level['attributions'])
+                levelbase.rank = level['rank']
+                levelbase.name = levelbase['name']
+            else:
+                level = MemberLevelBase(**level)
+                levels_to_create.append(level)
+                level_map[external_id] = level
+        update_fields = ['rank', 'name', 'attributions']
+        MemberLevelBase.objects.bulk_create(levels_to_create, batch_size=settings.BATCH_SIZE_M)
+        MemberLevelBase.objects.bulk_update(levels_to_update, update_fields, batch_size=settings.BATCH_SIZE_M)
+
 
 class LevelLogImporter(DataImporter):
 
@@ -71,13 +97,13 @@ class LevelLogImporter(DataImporter):
     attributions = Field('等級記錄屬性', group=group_level_log, is_attributions=True)
 
 
-class LevelImporter(DataImporter):
+class EventImporter(DataImporter):
 
-    data_type = DataTypeLevel
+    data_type = DataTypeEvent
 
     class DataTransfer:
-        class LevelTransfer:
-            model = Level
+        class EventTransfer:
+            model = Event
 
             external_id = Formatted(str, 'id')
 
@@ -94,6 +120,33 @@ class LevelImporter(DataImporter):
     ticket_type = Field('票券類型', group=group_event)
     cost_type = Field('免費/點數/兌換碼', group=group_event)
     attributions = Field('等級屬性', group=group_event, is_attributions=True)
+
+    def process_raw_records(self):
+
+        event_map = {}
+        for event in self.team.eventbase_set.values('id', 'external_id', 'rank', 'name', 'cost_type', 'attributions'):
+            event_map[event['external_id']] = LevelBase(**event)
+
+        events = self.datalist.event_set.values('external_id', 'rank', 'name', 'attributions', 'cost_type')
+        events_to_create = []
+        events_to_update = set()
+        for event in events:
+            external_id = event['external_id']
+            if external_id in event_map:
+                eventbase = event_map[external_id]
+                if event.id:
+                    events_to_update.add(eventbase)
+                eventbase.attributions.update(event['attributions'])
+                eventbase.rank = event['rank']
+                eventbase.name = eventbase['name']
+                eventbase.cost_type = eventbase['cost_type']
+            else:
+                event = EventBase(**event)
+                events_to_create.append(event)
+                event_map[external_id] = event
+        update_fields = ['rank', 'name', 'attributions', 'cost_type']
+        EventBase.objects.bulk_create(events_to_create, batch_size=settings.BATCH_SIZE_M)
+        EventBase.objects.bulk_update(events_to_update, update_fields, batch_size=settings.BATCH_SIZE_M)
 
 
 class EventLogImporter(DataImporter):

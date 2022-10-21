@@ -86,7 +86,6 @@ class Level(BaseModel):
     external_id = models.TextField(blank=False) # 對應代碼
 
     rank = models.IntegerField(default=0) # 1
-    uuid = models.UUIDField(default=uuid4, unique=True)
 
     name = models.TextField(blank=False) # 等級名稱
     attributions = JSONField(blank=True, null=True)

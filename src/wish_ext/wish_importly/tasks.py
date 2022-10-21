@@ -8,7 +8,7 @@ from importly.models import DataList
 from config.celery import app
 from team.models import Team
 
-from .importers import LevelImporter
+from .importers import LevelImporter, LevelLogImporter, EventImporter, EventLogImporter
 
 
 def process_datalist(team_slug, data, importer_cls):
