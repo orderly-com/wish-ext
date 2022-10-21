@@ -86,6 +86,8 @@ class EventBase(BaseModel):
     )
     removed = models.BooleanField(default=False)
 
+    attributions = JSONField(blank=True, null=True)
+
 
 class EventLogBase(BaseModel):
 
@@ -111,6 +113,8 @@ class EventLogBase(BaseModel):
     )
     removed = models.BooleanField(default=False)
 
+    attributions = JSONField(blank=True, null=True)
+
 
 class PointLogBase(BaseModel):
 
@@ -122,6 +126,8 @@ class PointLogBase(BaseModel):
 
     is_transaction = models.BooleanField(default=False)
     removed = models.BooleanField(default=False)
+
+    attributions = JSONField(blank=True, null=True)
 
 
 @client_info_model
@@ -149,3 +155,5 @@ class WishInfo(BaseModel):
     def __getattr__(self, attr):
         if attr == 'readbase_set':
             return TeamMongoDB(self.clientbase.team).readbases.filter(clientbase_id=self.clientbase_id)
+
+    attributions = JSONField(blank=True, null=True)
