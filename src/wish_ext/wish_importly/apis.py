@@ -68,3 +68,8 @@ class ImportLevelList(APIImportBaseView):
 @wish_ext.api('v1/<signature>/levelloglist/')
 class ImportLevelLogList(APIImportBaseView):
     task = process_levelloglist
+
+
+@wish_ext.api('v1/<signature>/pointloglist/')
+class ImportPointLogList(APIImportBaseView):
+    task = process_pointloglist
