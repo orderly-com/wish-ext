@@ -10,7 +10,6 @@ from team.models import Team
 
 from .importers import LevelImporter
 
-process_eventlist, process_levellist, process_eventloglist, process_levelloglist
 
 def process_datalist(team_slug, data, importer_cls):
     team = Team.objects.get(slug=team_slug)
