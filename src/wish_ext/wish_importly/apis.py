@@ -10,12 +10,9 @@ from rest_framework import status
 from external_app.models import ExternalAppApiKey
 
 from ..extension import wish_ext
-from .tasks import process_articlelist
+from .tasks import process_eventlist, process_levellist, process_eventloglist, process_levelloglist
 
-
-@wish_ext.api('v1/<signature>/articlelist/')
-class ImportArticleList(APIView):
-
+class APIImportBaseView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
@@ -46,29 +43,28 @@ class ImportArticleList(APIView):
             return JsonResponse({'result': False, 'msg': {'title': 'Invalid data', 'text': f'Max row of data per request is {settings.BATCH_SIZE_L}.'}}, status=status.HTTP_406_NOT_ACCEPTABLE)
 
         if settings.DEBUG is True:
-            process_articlelist(team_slug=team.slug, data=data)
+            self.task(team_slug=team.slug, data=data)
         else:
-            process_articlelist.delay(team_slug=team.slug, data=data)
+            self.task.delay(team_slug=team.slug, data=data)
 
-        return JsonResponse({'result': True, 'msg': {'title': 'OK', 'text': 'Article data is recived'}}, status=status.HTTP_200_OK)
+        return JsonResponse({'result': True, 'msg': {'title': 'OK', 'text': 'Data is recived'}}, status=status.HTTP_200_OK)
 
-        # {
-        #   "datasource": "360388fc-9172-4288-bf1f-ca41ea4fed7f",
-        #   "data": [
-        #     {
-        #       "id": "C9999aa",
-        #       "title": "文章一",
-        #       "content": "<html></html>",
-        #       "attributions": [
-        #         {
-        #           "name": "FF",
-        #           "value": "ff"
-        #         },
-        #         {
-        #           "name": "XX",
-        #           "value": "xx"
-        #         }
-        #       ]
-        #     }
-        #   ]
-        # }
+
+@wish_ext.api('v1/<signature>/eventlist/')
+class ImportEventList(APIImportBaseView):
+    task = process_eventlist
+
+
+@wish_ext.api('v1/<signature>/eventloglist/')
+class ImportEventLogList(APIImportBaseView):
+    task = process_eventloglist
+
+
+@wish_ext.api('v1/<signature>/levellist/')
+class ImportLevelList(APIImportBaseView):
+    task = process_levellist
+
+
+@wish_ext.api('v1/<signature>/levelloglist/')
+class ImportLevelLogList(APIImportBaseView):
+    task = process_levelloglist

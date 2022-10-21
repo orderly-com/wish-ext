@@ -8,8 +8,11 @@ from importly.models import DataList
 from config.celery import app
 from team.models import Team
 
-@app.task(time_limit=settings.APP_TASK_TIME_LIMIT_SM)
-def process_articlelist(team_slug, data):
+from .importers import LevelImporter
+
+process_eventlist, process_levellist, process_eventloglist, process_levelloglist
+
+def process_datalist(team_slug, data, importer_cls):
     team = Team.objects.get(slug=team_slug)
 
     datasource = data.get('datasource')
@@ -24,7 +27,7 @@ def process_articlelist(team_slug, data):
     except KeyError:
         raise EssentialDataMissing('data')
 
-    importer = LevelImporter(team, datasource)
+    importer = importer_cls(team, datasource)
 
     datalist = importer.create_datalist(rows)
     datalist.set_step(DataList.STEP_CREATE_RAW_RECORDS)
@@ -34,3 +37,24 @@ def process_articlelist(team_slug, data):
 
     importer.process_raw_records()
     datalist.set_step(DataList.STEP_DONE)
+
+
+
+@app.task(time_limit=settings.APP_TASK_TIME_LIMIT_SM)
+def process_levellist(team_slug, data):
+    process_datalist(team_slug, data, LevelImporter)
+
+
+@app.task(time_limit=settings.APP_TASK_TIME_LIMIT_SM)
+def process_levelloglist(team_slug, data):
+    process_datalist(team_slug, data, LevelLogImporter)
+
+
+@app.task(time_limit=settings.APP_TASK_TIME_LIMIT_SM)
+def process_eventlist(team_slug, data):
+    process_datalist(team_slug, data, EventImporter)
+
+
+@app.task(time_limit=settings.APP_TASK_TIME_LIMIT_SM)
+def process_eventloglist(team_slug, data):
+    process_datalist(team_slug, data, EventLogImporter)
