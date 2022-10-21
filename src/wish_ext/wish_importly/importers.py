@@ -30,7 +30,7 @@ class LevelImporter(DataImporter):
             external_id = Formatted(str, 'id')
 
             name = Formatted(str, 'name')
-            rank = Formatted(format_int, 'rank')
+            rank = Formatted(lambda x: format_int(x, default=0), 'rank')
             attributions = Formatted(dict, 'attributions')
 
     group_level = FieldGroup(key='LEVEL', name='等級')
