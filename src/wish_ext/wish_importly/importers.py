@@ -15,7 +15,7 @@ from datahub.models import Field, FieldGroup, ChoiceField, PrimaryField
 from ..wish.datahub import DataTypeLevel, DataTypeLevelLog, DataTypeEvent, DataTypeEventLog
 
 from .formatters import format_dict
-from .models import Level, LovelLog, Event, EventLog
+from .models import Level, LevelLog, Event, EventLog
 
 
 class LevelImporter(DataImporter):
