@@ -6,7 +6,7 @@ from django.db.models import Min
 
 from importly.importers import DataImporter
 from importly.formatters import (
-    Formatted, format_datetime
+    Formatted, format_datetime, format_int
 )
 
 from datahub.data_flows import handle_data
@@ -30,7 +30,7 @@ class LevelImporter(DataImporter):
             external_id = Formatted(str, 'id')
 
             name = Formatted(str, 'name')
-            rank = Formatted(str, 'rank')
+            rank = Formatted(format_int, 'rank')
             attributions = Formatted(dict, 'attributions')
 
     group_level = FieldGroup(key='LEVEL', name='等級')
