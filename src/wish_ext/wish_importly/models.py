@@ -10,7 +10,7 @@ from core.models import BaseModel, ValueTaggable
 from importly.models import RawModel
 
 
-class Event(BaseModel):
+class Event(RawModel):
     class Meta:
         indexes = [
             models.Index(fields=['cost_type', ]),
@@ -46,7 +46,7 @@ class Event(BaseModel):
     attributions = JSONField(blank=True, null=True)
 
 
-class EventLog(BaseModel):
+class EventLog(RawModel):
 
     team = models.ForeignKey(Team, blank=False, on_delete=models.CASCADE)
     event_external_id = models.TextField(blank=False)
@@ -71,7 +71,8 @@ class EventLog(BaseModel):
 
     attributions = JSONField(blank=True, null=True)
 
-class Level(BaseModel):
+
+class Level(RawModel):
     class Meta:
 
         indexes = [
@@ -91,7 +92,7 @@ class Level(BaseModel):
     attributions = JSONField(blank=True, null=True)
 
 
-class LevelLog(BaseModel):
+class LevelLog(RawModel):
 
     team = models.ForeignKey(Team, blank=False, on_delete=models.CASCADE)
     from_level_id = models.TextField(blank=False)
@@ -103,4 +104,3 @@ class LevelLog(BaseModel):
 
     source_type = models.CharField(max_length=128)
     attributions = JSONField(blank=True, null=True)
-
