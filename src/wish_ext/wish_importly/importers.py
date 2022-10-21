@@ -45,7 +45,7 @@ class LevelImporter(DataImporter):
 
         level_map = {}
         for level in self.team.memberlevelbase_set.values('id', 'external_id', 'rank', 'name', 'attributions'):
-            level_map[level['external_id']] = LevelBase(**level)
+            level_map[level['external_id']] = MemberLevelBase(**level)
 
         levels = self.datalist.level_set.values('external_id', 'rank', 'name', 'attributions')
         levels_to_create = []
