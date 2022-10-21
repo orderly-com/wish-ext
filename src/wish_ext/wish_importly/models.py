@@ -45,6 +45,8 @@ class Event(RawModel):
 
     attributions = JSONField(blank=True, null=True)
 
+    datasource = models.ForeignKey(DataSource, blank=False, on_delete=models.CASCADE)
+
 
 class EventLog(RawModel):
 
@@ -71,6 +73,8 @@ class EventLog(RawModel):
 
     attributions = JSONField(blank=True, null=True)
 
+    datasource = models.ForeignKey(DataSource, blank=False, on_delete=models.CASCADE)
+
 
 class Level(RawModel):
     class Meta:
@@ -91,6 +95,8 @@ class Level(RawModel):
     name = models.TextField(blank=False) # 等級名稱
     attributions = JSONField(blank=True, null=True)
 
+    datasource = models.ForeignKey(DataSource, blank=False, on_delete=models.CASCADE)
+
 
 class LevelLog(RawModel):
 
@@ -104,3 +110,5 @@ class LevelLog(RawModel):
 
     source_type = models.CharField(max_length=128)
     attributions = JSONField(blank=True, null=True)
+
+    datasource = models.ForeignKey(DataSource, blank=False, on_delete=models.CASCADE)
