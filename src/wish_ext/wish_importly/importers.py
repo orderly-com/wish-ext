@@ -58,7 +58,7 @@ class LevelImporter(DataImporter):
                     levels_to_update.add(levelbase)
                 levelbase.attributions.update(level['attributions'])
                 levelbase.rank = level['rank']
-                levelbase.name = levelbase['name']
+                levelbase.name = level['name']
             else:
                 level = MemberLevelBase(**level, team_id=self.team.id)
                 levels_to_create.append(level)
