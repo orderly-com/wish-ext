@@ -41,8 +41,8 @@ class MemberLevelBase(BaseModel):
 class LevelLogBase(BaseModel):
 
     team = models.ForeignKey(Team, blank=False, on_delete=models.CASCADE)
-    from_level = models.ForeignKey(MemberLevel, related_name='to_logs', on_delete=models.CASCADE)
-    to_level = models.ForeignKey(MemberLevel, related_name='from_logs', on_delete=models.CASCADE)
+    from_level = models.ForeignKey(MemberLevelBase, related_name='to_logs', on_delete=models.CASCADE)
+    to_level = models.ForeignKey(MemberLevelBase, related_name='from_logs', on_delete=models.CASCADE)
     clientbase = models.ForeignKey(ClientBase, on_delete=models.CASCADE)
     datetime = models.DateTimeField(null=True)
     from_datetime = models.DateTimeField(null=True)
@@ -144,7 +144,7 @@ class WishInfo(BaseModel):
         null=True,
     )
     clientbase = models.OneToOneField(ClientBase, related_name='wish_info', blank=False, on_delete=models.CASCADE)
-    level = models.ForeignKey(MemberLevel, related_name='clientbases', null=True, blank=True, on_delete=models.CASCADE)
+    level = models.ForeignKey(MemberLevelBase, related_name='clientbases', null=True, blank=True, on_delete=models.CASCADE)
 
     def __getattr__(self, attr):
         if attr == 'readbase_set':
