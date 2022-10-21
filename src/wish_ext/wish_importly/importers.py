@@ -13,7 +13,7 @@ from datahub.data_flows import handle_data
 from datahub.models import Field, FieldGroup, ChoiceField, PrimaryField
 
 from ..wish.datahub import DataTypeLevel, DataTypeLevelLog, DataTypeEvent, DataTypeEventLog
-from ..wish.models import EventBase, MemberlevelBase, LevelLogBase, EventLogBase
+from ..wish.models import EventBase, MemberLevelBase, LevelLogBase, EventLogBase
 
 from .formatters import format_dict
 from .models import Level, LevelLog, Event, EventLog
