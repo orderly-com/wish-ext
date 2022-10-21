@@ -60,7 +60,7 @@ class LevelImporter(DataImporter):
                 levelbase.rank = level['rank']
                 levelbase.name = levelbase['name']
             else:
-                level = MemberLevelBase(**level)
+                level = MemberLevelBase(**level, team_id=self.team.id)
                 levels_to_create.append(level)
                 level_map[external_id] = level
         update_fields = ['rank', 'name', 'attributions']
@@ -142,7 +142,7 @@ class EventImporter(DataImporter):
                 eventbase.name = eventbase['name']
                 eventbase.cost_type = eventbase['cost_type']
             else:
-                event = EventBase(**event)
+                event = EventBase(**event, team_id=self.team.id)
                 events_to_create.append(event)
                 event_map[external_id] = event
         update_fields = ['ticket_type', 'name', 'attributions', 'cost_type']
