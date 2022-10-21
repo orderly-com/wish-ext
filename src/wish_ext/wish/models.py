@@ -37,6 +37,8 @@ class MemberLevelBase(BaseModel):
     name = models.TextField(blank=False) # 等級名稱
     removed = models.BooleanField(default=False)
 
+    attributions = JSONField(blank=True, null=True)
+
 
 class LevelLogBase(BaseModel):
 
@@ -50,6 +52,8 @@ class LevelLogBase(BaseModel):
 
     source_type = models.CharField(max_length=128)
     removed = models.BooleanField(default=False)
+
+    attributions = JSONField(blank=True, null=True)
 
 
 class EventBase(BaseModel):
