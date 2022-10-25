@@ -17,6 +17,27 @@ from cerem.utils import TeamMongoDB, F, Sum
 from ..extension import wish_ext
 
 
+class Brand(BaseModel):
+    class Meta:
+
+        indexes = [
+            models.Index(fields=['team', ]),
+            models.Index(fields=['name', ]),
+
+            models.Index(fields=['team', 'name']),
+        ]
+
+    team = models.ForeignKey(Team, blank=False, on_delete=models.CASCADE)
+
+    external_id = models.TextField(blank=False) # 品牌代碼
+
+    order = models.IntegerField(default=0) # 1
+    uuid = models.UUIDField(default=uuid4, unique=True)
+
+    name = models.TextField(blank=False) # 品牌名稱
+    removed = models.BooleanField(default=False)
+
+
 class MemberLevelBase(BaseModel):
     class Meta:
 
