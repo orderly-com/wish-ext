@@ -16,7 +16,7 @@ from team.models import ClientBase
 from orderly.models import Client
 
 from ..retail.datahub import channels, DataTypeOrder
-from ..retail.models import OrderBase, PurchaseBase, ProductBase
+from ..retail.models import OrderBase, PurchaseBase, RetailProduct
 
 from .formatters import format_dict, format_price, format_bool
 from .models import Order, Product, OrderRow
@@ -180,7 +180,7 @@ class OrderImporter(DataImporter):
             self.team.productbase_set.filter(removed=False).values_list('external_id', 'id')
         )
         for external_id, product_id in products:
-            product_map[external_id] = ProductBase(id=product_id)
+            product_map[external_id] = RetailProduct(id=product_id)
         productbases_to_create = []
         rows = list(self.datalist.datalistrow_set.values('product__external_id', 'id', 'orderrow__id', 'product__name', 'product__price'))
         for row in rows:
@@ -188,10 +188,10 @@ class OrderImporter(DataImporter):
             if external_id in product_map:
                 productbase = product_map[external_id]
             else:
-                productbase = ProductBase(external_id=external_id, team=self.team, name=row['product__name'], price=row['product__price'])
+                productbase = RetailProduct(external_id=external_id, team=self.team, name=row['product__name'], price=row['product__price'])
                 productbases_to_create.append(productbase)
             row['productbase'] = productbase
-        ProductBase.objects.bulk_create(productbases_to_create, batch_size=settings.BATCH_SIZE_M)
+        RetailProduct.objects.bulk_create(productbases_to_create, batch_size=settings.BATCH_SIZE_M)
         orders_to_update = []
         for row in rows:
             orders_to_update.append(

@@ -7,8 +7,6 @@ from django.db.models.functions import Extract
 class WishExtension(Extension):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.read_match_function = lambda: False
-        self.read_match_policy_level = -1
 
 wish_ext = WishExtension()
 

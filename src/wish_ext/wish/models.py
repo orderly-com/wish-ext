@@ -116,6 +116,7 @@ class EventBase(BaseModel):
 
 class EventLogBase(BaseModel):
 
+    external_id = models.CharField(max_length=128, unique=True, default=uuid4)
     team = models.ForeignKey(Team, blank=False, on_delete=models.CASCADE)
     event = models.ForeignKey(EventBase, related_name='logs', on_delete=models.CASCADE)
     clientbase = models.ForeignKey(ClientBase, on_delete=models.CASCADE)
@@ -129,7 +130,7 @@ class EventLogBase(BaseModel):
         (ACTION_USE, '使用'),
     )
 
-    cost_type = models.CharField(
+    action = models.CharField(
         choices=ACTION_CHOICES,
         default=ACTION_CLAIM,
         max_length=64,

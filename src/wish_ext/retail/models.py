@@ -8,13 +8,13 @@ from django.contrib.postgres.fields import JSONField, ArrayField
 from datahub.models import DataSource
 
 from core.models import BaseModel, ValueTaggable
-from team.models import Team, OrderBase, AbstractProduct, ClientBase
+from team.models import Team, OrderBase, ProductBase, ClientBase
 from team.registries import client_info_model
 from tag_assigner.registries import taggable
 
 from cerem.utils import TeamMongoDB, F, Sum
 
-from ..extension import retail_ext
+from ..extension import wish_ext
 from ..wish.models import Brand
 
 
@@ -37,9 +37,9 @@ class ProductCategory(BaseModel):
     removed = models.BooleanField(default=False)
 
 
-@retail_ext.ProductModel
+@wish_ext.ProductModel
 @taggable('product')
-class ProductBase(AbstractProduct):
+class RetailProduct(ProductBase):
     class Meta:
         indexes = [
             models.Index(fields=['datasource', ]),
@@ -61,7 +61,7 @@ class ProductBase(AbstractProduct):
         return reverse('media:article-records', kwargs={'uuid': self.uuid})
 
 
-@retail_ext.OrderModel
+@wish_ext.OrderModel
 @taggable('order')
 class PurchaseBase(OrderBase):
     class Meta:
@@ -113,7 +113,7 @@ class OrderProduct(BaseModel):
     team = models.ForeignKey(Team, blank=False, on_delete=models.CASCADE)
     datalist_id = models.IntegerField(blank=True, null=True)  # so we can trace back to it's original orderlist
 
-    productbase = models.ForeignKey(ProductBase, blank=False, null=False, on_delete=models.CASCADE)
+    productbase = models.ForeignKey(RetailProduct, blank=False, null=False, on_delete=models.CASCADE)
     purchasebase = models.ForeignKey(PurchaseBase, blank=False, null=False, on_delete=models.CASCADE)
     clientbase = models.ForeignKey(ClientBase, blank=False, null=True, default=None, on_delete=models.CASCADE)
 

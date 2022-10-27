@@ -3,11 +3,11 @@ from importly.importers import FileImporter
 from orderly_core.team.importers import ClientImporter
 from ..retail_importly.importers import OrderImporter
 
-from ..extension import retail_ext
+from ..extension import wish_ext
 
 
 
-@retail_ext.datasource('威許訂單格式')
+@wish_ext.datasource('威許訂單格式')
 class OrderFileImporter(FileImporter):
     data_importer = OrderImporter
 
@@ -23,7 +23,7 @@ class OrderFileImporter(FileImporter):
         pass
 
 
-@retail_ext.datasource('威許會員格式')
+@wish_ext.datasource('威許會員格式')
 class ClientFileImporter(FileImporter):
     data_importer = ClientImporter
 

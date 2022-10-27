@@ -9,7 +9,7 @@ from team.models import Team
 from core.models import BaseModel, ValueTaggable
 from importly.models import RawModel
 
-from ..retail.models import ProductBase, PurchaseBase
+from ..retail.models import RetailProduct, PurchaseBase
 
 
 class Product(RawModel):
@@ -33,7 +33,7 @@ class Product(RawModel):
     datasource = models.ForeignKey(DataSource, blank=False, on_delete=models.CASCADE)
     categories = ArrayField(JSONField(default=dict), default=list)
 
-    productbase = models.ForeignKey(ProductBase, blank=True, null=True, on_delete=models.CASCADE)
+    productbase = models.ForeignKey(RetailProduct, blank=True, null=True, on_delete=models.CASCADE)
 
 
 class OrderRow(RawModel):

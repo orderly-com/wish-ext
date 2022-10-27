@@ -14,8 +14,6 @@ from core.utils import TeamAuthPermission, ForestTimer, array_to_dict, make_date
 
 from team.views import TeamMixin
 
-from .models import AbstractProduct
+from ..extension import wish_ext
 
-from ..extension import retail_ext
-
-retail_router = retail_ext.router('retail/', name='retail')
+retail_router = wish_ext.router('retail/', name='retail')

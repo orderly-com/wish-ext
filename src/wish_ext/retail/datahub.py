@@ -3,7 +3,7 @@ import re
 from datahub.models import DataType, data_type
 from django.db.models import Min, Max, F
 
-from ..extension import retail_ext
+from ..extension import wish_ext
 
 @data_type
 class DataTypeOrder(DataType):
@@ -73,8 +73,3 @@ class DataTypeSyncReadingData(DataType):
 class channels:
     ARTICLE_IMPORT = 'article_import'
     ARTICLE_TO_ARTICLEBASE = 'article_to_articlebase'
-
-
-@retail_ext.read_match_policy(level=0)
-def match_read_event(rule, read):
-    return bool(re.match(rule, read['path']))

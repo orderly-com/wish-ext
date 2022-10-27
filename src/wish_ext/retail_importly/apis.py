@@ -9,5 +9,5 @@ from rest_framework import status
 
 from external_app.models import ExternalAppApiKey
 
-from ..extension import retail_ext
+from ..extension import wish_ext
 

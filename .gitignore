@@ -1,1 +1,64 @@
-.vscode
+# dev & environment
+.vscode/*
+**/venv/*
+
+# all file types
+*.pyc
+*.numbers
+*.docs
+*.doc
+*.xls
+
+
+# all folders
+reference_code/*
+web/assets/debug_toolbar
+web/config/assets
+web/htmlcov/*
+web/w1*
+src/*
+logs/*
+log/*
+ansible/
+web/edm/email_list_buffers/
+
+
+# application related
+web/config/settings/google-oauth\.json
+web/config/settings/google_client_secret\.json
+web/config/settings/client_secrets\.json
+web/fabfile.py
+web/deploy.py
+web/settings.cfg
+web/deploy_ds.py
+web/core/tests/hash_lib.json
+
+
+# application configure
+web/config/settings/production.py
+web/config/settings/local.py
+
+
+# test
+automation-testing/config.py
+automation-testing/test_log/
+
+
+# single file
+hacks.txt
+celerybeat.pid
+dump.rdb
+credentials.py
+geckodriver.log
+.coverage
+local.txt
+
+
+# exception to the rule
+training_models/*
+!training_models/.gitkeep
+
+/env/
+web/src/
+/web/entrypoint.sh
+/web/celery-entrypoint.sh
