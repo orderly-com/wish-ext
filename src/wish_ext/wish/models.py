@@ -8,7 +8,7 @@ from django.contrib.postgres.fields import JSONField, ArrayField
 from datahub.models import DataSource
 
 from core.models import BaseModel, ValueTaggable
-from team.models import Team, OrderBase, ProductBase, ClientBase
+from team.models import Team, OrderBase, ProductBase, ClientBase, TeamAuth
 from team.registries import client_info_model
 from tag_assigner.registries import taggable
 
@@ -36,6 +36,18 @@ class Brand(BaseModel):
 
     name = models.TextField(blank=False) # 品牌名稱
     removed = models.BooleanField(default=False)
+
+
+class BrandAuth(BaseModel):
+
+    class Meta:
+
+        indexes = [
+            models.Index(fields=['team_auth', 'brand']),
+        ]
+    brand = models.ForeignKey(Brand, blank=False, null=False, on_delete=models.CASCADE)
+    team_auth = models.ForeignKey(TeamAuth, blank=False, null=False, on_delete=models.CASCADE)
+    enabled = models.BooleanField(default=True)
 
 
 class MemberLevelBase(BaseModel):
