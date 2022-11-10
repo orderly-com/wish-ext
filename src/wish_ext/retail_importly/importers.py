@@ -73,9 +73,9 @@ class OrderImporter(DataImporter):
     refound = ChoiceField('是否為退貨', group=group_order, choices=REFOUND_CHOICES)
 
     STATUS_CHOIES = {
-        PurchaseBase.STATUS_CONFIRMED: '男性',
-        PurchaseBase.STATUS_ABANDONED: '女性',
-        PurchaseBase.STATUS_KEEP: '未知',
+        PurchaseBase.STATUS_CONFIRMED: '確認',
+        PurchaseBase.STATUS_ABANDONED: '取消',
+        PurchaseBase.STATUS_KEEP: '處理中',
     }
 
     datetime = Field('訂單日期', group=group_order)
@@ -107,8 +107,13 @@ class OrderImporter(DataImporter):
         orderbases_to_create = []
         orderbase = []
         orders_to_update = []
-        for order in self.datalist.datalistrow_set.values('order__id', 'order__external_id', 'order__clientbase_id', 'order__datetime', 'order__brand_id'):
-            brand_id = brand_map.get(order['brand_id'])
+        orderbases_to_update = []
+        for order in self.datalist.datalistrow_set.values(
+            'order__id', 'order__external_id', 'order__clientbase_id', 'order__datetime', 'order__brand_id',
+            'order__status'
+        ):
+
+            brand_id = brand_map.get(order['order__brand_id'])
             if order['order__external_id'] in orderbase_map:
                 orderbase = orderbase_map[order['order__external_id']]
                 update = False
@@ -118,6 +123,9 @@ class OrderImporter(DataImporter):
                 if order['order__datetime']:
                     orderbase.datetime = order['order__datetime']
                     update = True
+                if order['order__status']:
+                    orderbase.status = order['order__status']
+                    update = True
                 if update and orderbase.id:
                     orderbases_to_update.append(orderbase)
             else:
@@ -125,6 +133,7 @@ class OrderImporter(DataImporter):
                     external_id=order['order__external_id'],
                     clientbase_id=order['order__clientbase_id'],
                     datetime=order['order__datetime'],
+                    status=order['order__status'],
                     brand_id=brand_id,
                     team=self.team
                 )
@@ -177,18 +186,22 @@ class OrderImporter(DataImporter):
     def create_productbases(self):
         product_map = {}
         products = list(
-            self.team.productbase_set.filter(removed=False).values_list('external_id', 'id')
+            RetailProduct.objects.filter(team=self.team).filter(removed=False).values_list('external_id', 'id')
         )
         for external_id, product_id in products:
             product_map[external_id] = RetailProduct(id=product_id)
         productbases_to_create = []
         rows = list(self.datalist.datalistrow_set.values('product__external_id', 'id', 'orderrow__id', 'product__name', 'product__price'))
+        products_to_update = []
         for row in rows:
             external_id = row['product__external_id']
             if external_id in product_map:
                 productbase = product_map[external_id]
+                if productbase.id and productbase.id not in products_to_update:
+                    products_to_update.append(productbase)
             else:
                 productbase = RetailProduct(external_id=external_id, team=self.team, name=row['product__name'], price=row['product__price'])
+                product_map[external_id] = productbase
                 productbases_to_create.append(productbase)
             row['productbase'] = productbase
         RetailProduct.objects.bulk_create(productbases_to_create, batch_size=settings.BATCH_SIZE_M)
@@ -201,6 +214,7 @@ class OrderImporter(DataImporter):
                 )
             )
         OrderRow.objects.bulk_update(orders_to_update, ['productbase_id'], batch_size=settings.BATCH_SIZE_M)
+        RetailProduct.objects.bulk_update(products_to_update, ['name', 'price'], batch_size=settings.BATCH_SIZE_M)
 
     def create_orderproducts(self):
         for order in self.orderbase_map.values():
@@ -224,6 +238,7 @@ class OrderImporter(DataImporter):
                 quantity = row['orderrow__quantity'],
                 total_price = row['orderrow__sale_price'] * row['orderrow__quantity']
             )
+
     def calculate_total_price(self):
         orderbases_to_update = []
         for orderbase in self.orderbase_map.values():
