@@ -17,7 +17,8 @@ from core.utils import run
 from .models import PurchaseBase
 from ..extension import wish_ext
 
-@wish_ext.periodic_task()
+
+@app.task
 def calculate_clientbase_rfm_for_team(team_id):
     '''
     updates ['avg_repurchase_days', 'recency', 'frequency', 'monetary', 'total_score', 'percentile']

@@ -64,6 +64,7 @@ class TopProductSetLifts(BarChart):
     def draw(self):
         min_support = self.options.get('min_support', 0.01)
         min_confidence = self.options.get('min_confidence', 0.01)
+        display_count = self.options.get('display_count', 50)
         qs = (
             self.team.purchasebase_set.select_related('clientbase')
             .filter(
@@ -88,7 +89,7 @@ class TopProductSetLifts(BarChart):
         df.sort_values(by='lift', ascending=False, inplace=True)
         df.reset_index(drop=True, inplace=True)
         for index, row in df.iterrows():
-            if index > 10:
+            if index >= display_count:
                 break
             product_names = []
             for item in row['consequents']:
@@ -115,6 +116,7 @@ class TopProductSetSupports(BarChart):
 
     def draw(self):
         min_support = self.options.get('min_support', 0.01)
+        display_count = self.options.get('display_count', 50)
         qs = (
             self.team.purchasebase_set.select_related('clientbase')
             .filter(
@@ -138,7 +140,7 @@ class TopProductSetSupports(BarChart):
         frequent_itemsets.sort_values(by='support', ascending=False, inplace=True)
         frequent_itemsets.reset_index(drop=True, inplace=True)
         for index, row in frequent_itemsets.iterrows():
-            if index > 10:
+            if index >= display_count:
                 break
             product_names = []
             for item in row['itemsets']:
