@@ -137,6 +137,8 @@ class OrderImporter(DataImporter):
                     brand_id=brand_id,
                     team=self.team
                 )
+                if not orderbase.datetime:
+                    continue
                 orderbase_map[order['order__external_id']] = orderbase
                 orderbases_to_create.append(orderbase)
             orders_to_update.append([order['order__id'], orderbase])
@@ -228,6 +230,8 @@ class OrderImporter(DataImporter):
             'orderrow__sale_price',
             'orderrow__quantity'
         ):
+            if row['order__external_id'] not in self.orderbase_map:
+                continue
             orderbase = self.orderbase_map[row['order__external_id']]
             orderbase.orderproduct_set.create(
                 team=self.team,

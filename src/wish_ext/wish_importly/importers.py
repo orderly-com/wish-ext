@@ -256,7 +256,7 @@ class PointLogImporter(DataImporter):
     id = PrimaryField('記錄編號', required=True, group=group_event_log)
     point_name = Field('活動編號', group=group_event_log)
     member_id = Field('會員ID', group=group_event_log)
-    datetime = Field('時間', group=group_event_log)
+    datetime = Field('時間', group=group_event_log, required=True)
     amount = Field('數量', group=group_event_log)
     attributions = Field('活動記錄屬性', group=group_event_log, is_attributions=True)
 
