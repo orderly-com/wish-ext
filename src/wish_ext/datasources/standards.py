@@ -16,11 +16,11 @@ class OrderFileImporter(FileImporter):
 
     @staticmethod
     def get_required_headers():
-        return ['member_transaction_no']
+        return ['會員編號']
 
     @staticmethod
     def get_headers_array():
-        return ['id', 'member_transaction_no', 'sod_id', 'number', 'sale_price', 'retail_price', 'so_amount', 'so_discount_amt', 'member_transaction_type', 'code', 'name', 'act_id', 'company_code', 'created_at', 'updated_at']
+        return ['品牌名稱', '交易時間', '交易時段', '門市id', '門市名稱', '訂單編號', '發票金額', '交易型態(一般/退貨)', '會員編號', '發票號碼', '是否首購', '是否會員', '付費方式', 'member_card_id', '訂單明細流水號', '購買數量', '產品原價', '產品唯一碼', '產品名稱', '折扣後單價', '活動代碼', '品項小計', '折扣金額']
 
     def process_dataset(self):
         pass
@@ -32,27 +32,11 @@ class ClientFileImporter(FileImporter):
 
     @staticmethod
     def get_required_headers():
-        return ['no']
+        return ['會員編號']
 
     @staticmethod
     def get_headers_array():
-        return ['id', 'no', 'sex', 'birthday', 'registered_at', 'first_transaction_at', 'end_transaction_at', 'type', 'activity_type', 'postal_code', 'city', 'district', 'last_updated_at', 'company_code', 'created_at', 'updated_at']
-
-    def process_dataset(self):
-        pass
-
-
-@wish_ext.datasource('威許會員格式')
-class ClientFileImporter(FileImporter):
-    data_importer = ClientImporter
-
-    @staticmethod
-    def get_required_headers():
-        return ['no']
-
-    @staticmethod
-    def get_headers_array():
-        return ['id', 'no', 'sex', 'birthday', 'registered_at', 'first_transaction_at', 'end_transaction_at', 'type', 'activity_type', 'postal_code', 'city', 'district', 'last_updated_at', 'company_code', 'created_at', 'updated_at']
+        return ['會員編號', '會員卡編號', '姓名', '性別', '電話', '信箱', '生日', '會員建立時間', '會員首購時間', '會員最後購買時間', 'NESL', 'R', 'F', 'M', '會員所屬縣市郵遁區號', '會員所屬縣市', '會員所屬鄉鎮區', '點數/儲值金/優惠券...', '剩餘數值', '最近一次到期時間', '最近一次到期數值', '修改時間(預留)', '等級', '等級代碼', '等級即將到期', 'Facebook 綁定', 'LINE 綁定', 'Google 綁定', 'Apple 綁定']
 
     def process_dataset(self):
         pass

@@ -9,6 +9,7 @@ from ..extension import wish_ext
 class DataTypeOrder(DataType):
     key = 'order'
     name = '訂單'
+    detail_availabel = True
 
     @staticmethod
     def get_records_fields_display():
