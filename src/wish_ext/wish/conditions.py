@@ -26,7 +26,7 @@ class EventConditionBase(SelectCondition):
         return client_qs, q
 
 
-@condition
+@condition('免費活動', tab='活動')
 class FreeEventCondition(EventConditionBase):
     def lazy_init(self, team, *args, **kwargs):
         events = team.eventbase_set.filter(cost_type=EventBase.COST_TYPE_FREE)
@@ -36,7 +36,7 @@ class FreeEventCondition(EventConditionBase):
         self.choice(*data)
 
 
-@condition
+@condition('兌換碼活動', tab='活動')
 class CodeEventCondition(EventConditionBase):
     def lazy_init(self, team, *args, **kwargs):
         events = team.eventbase_set.filter(cost_type=EventBase.COST_TYPE_CODE)
@@ -46,7 +46,7 @@ class CodeEventCondition(EventConditionBase):
         self.choice(*data)
 
 
-@condition
+@condition('點數活動', tab='活動')
 class CreditEventCondition(EventConditionBase):
     def lazy_init(self, team, *args, **kwargs):
         events = team.eventbase_set.filter(cost_type=EventBase.COST_TYPE_CREDIT)
@@ -76,17 +76,17 @@ class PointConditionBase(SelectCondition):
         return client_qs, q
 
 
-@condition
+@condition('兌點', tab='點數')
 class PointUseCondition(PointConditionBase):
     log_filter = Q(pointlogbase__amount__lt=0)
 
 
-@condition
+@condition('給點', tab='點數')
 class PointClaimCondition(PointConditionBase):
     log_filter = Q(pointlogbase__amount__gt=0)
 
 
-@condition
+@condition('等級', tab='點數')
 class LevelCondition(SelectCondition):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
