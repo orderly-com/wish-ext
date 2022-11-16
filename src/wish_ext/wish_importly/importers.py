@@ -35,7 +35,7 @@ class LevelImporter(DataImporter):
 
     group_level = FieldGroup(key='LEVEL', name='等級')
 
-    id = PrimaryField('文章編號', required=True, group=group_level)
+    id = PrimaryField('等級 ID', required=True, group=group_level)
 
     name = Field('等級名稱', group=group_level)
     rank = Field('階級數字', group=group_level)
@@ -89,8 +89,8 @@ class LevelLogImporter(DataImporter):
     group_level_log = FieldGroup(key='LEVELLOG', name='等級記錄')
 
     id = PrimaryField('記錄ID', required=True, group=group_level_log)
-    from_level_id = Field('來源等級編號', group=group_level_log)
-    to_level_id = Field('現在等級編號', group=group_level_log)
+    from_level_id = Field('原始等級編號', group=group_level_log)
+    to_level_id = Field('後來等級編號', group=group_level_log)
     member_id = Field('會員ID', group=group_level_log)
     datetime = Field('建立時間', group=group_level_log)
     from_datetime = Field('等級開始時間', group=group_level_log)
@@ -99,9 +99,11 @@ class LevelLogImporter(DataImporter):
 
     def process_raw_records(self):
 
+        level_name_map = {}
         level_map = {}
-        for external_id, level_id in self.team.memberlevelbase_set.values_list('external_id', 'id'):
+        for external_id, name, level_id in self.team.memberlevelbase_set.values_list('external_id', 'name', 'id'):
             level_map[external_id] = level_id
+            level_name_map[name] = level_id
 
         clientbase_map = {}
         for clientbase_id, external_id in self.team.clientbase_set.filter(removed=False).values_list('id', 'external_id'):
@@ -116,10 +118,10 @@ class LevelLogImporter(DataImporter):
             from_level_id = log.pop('from_level_id')
             to_level_id = log.pop('to_level_id')
             clientbase_external_id = log.pop('clientbase_external_id')
-            log['from_level_id'] = level_map.get(from_level_id)
-            log['to_level_id'] = level_map.get(to_level_id)
+            log['from_level_id'] = level_map.get(from_level_id, level_name_map.get(from_level_id))
+            log['to_level_id'] = level_map.get(to_level_id, level_name_map.get(to_level_id))
             clientbase_id = clientbase_map.get(clientbase_external_id)
-            if not clientbase_id:
+            if not clientbase_id or not log['from_level_id'] or not log['to_level_id']:
                 continue
             logs_to_create.append(LevelLogBase(**log, clientbase_id=clientbase_id, team_id=self.team.id))
 
@@ -146,7 +148,7 @@ class EventImporter(DataImporter):
     name = Field('活動名稱', group=group_event)
     ticket_type = Field('票券類型', group=group_event)
     cost_type = Field('免費/點數/兌換碼', group=group_event)
-    attributions = Field('等級屬性', group=group_event, is_attributions=True)
+    attributions = Field('活動屬性', group=group_event, is_attributions=True)
 
     def process_raw_records(self):
 
@@ -223,6 +225,7 @@ class EventLogImporter(DataImporter):
             if not log['external_id']:
                 del log['external_id']
             clientbase_id = clientbase_map.get(clientbase_external_id)
+            print(event_map, event_id, log['event_id'])
 
             if not clientbase_id or not log['event_id']:
                 continue
@@ -253,8 +256,8 @@ class PointLogImporter(DataImporter):
     id = PrimaryField('記錄編號', required=True, group=group_event_log)
     point_name = Field('活動編號', group=group_event_log)
     member_id = Field('會員ID', group=group_event_log)
-    datetime = Field('時間', group=group_event_log)
-    amount = Field('領取/使用', group=group_event_log)
+    datetime = Field('時間', group=group_event_log, required=True)
+    amount = Field('數量', group=group_event_log)
     attributions = Field('活動記錄屬性', group=group_event_log, is_attributions=True)
 
     is_transaction = Field('交易/非交易', group=group_event_log)

@@ -85,16 +85,6 @@ class PurchaseBase(OrderBase):
     categories = models.ManyToManyField(ProductCategory, blank=True)
     status = models.CharField(max_length=64, blank=False, null=False, default=STATUS_CONFIRMED)
 
-    @classmethod
-    def confirmed_objects(cls):
-        return cls.objects.filter(status=cls.STATUS_CONFIRMED)
-
-    def get_detail_url(self):
-        return reverse('media:article-detail', kwargs={'uuid': self.uuid})
-
-    def get_records_url(self):
-        return reverse('media:article-records', kwargs={'uuid': self.uuid})
-
 
 class OrderProduct(BaseModel):
 
