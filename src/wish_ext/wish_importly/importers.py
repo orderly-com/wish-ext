@@ -140,6 +140,7 @@ class EventImporter(DataImporter):
 
             name = Formatted(str, 'name')
             ticket_type = Formatted(str, 'ticket_type')
+            ticket_name = Formatted(str, 'ticket_name')
             cost_type = Formatted(str, 'cost_type')
             attributions = Formatted(dict, 'attributions')
 
@@ -147,16 +148,17 @@ class EventImporter(DataImporter):
 
     name = Field('活動名稱', group=group_event)
     ticket_type = Field('票券類型', group=group_event)
+    ticket_name = Field('票券名稱', group=group_event)
     cost_type = Field('免費/點數/兌換碼', group=group_event)
     attributions = Field('活動屬性', group=group_event, is_attributions=True)
 
     def process_raw_records(self):
 
         event_map = {}
-        for event in self.team.eventbase_set.values('id', 'external_id', 'ticket_type', 'name', 'cost_type', 'attributions'):
+        for event in self.team.eventbase_set.values('id', 'external_id', 'ticket_type', 'name', 'cost_type', 'attributions', 'ticket_name'):
             event_map[event['external_id']] = EventBase(**event)
 
-        events = self.datalist.event_set.values('external_id', 'ticket_type', 'name', 'attributions', 'cost_type')
+        events = self.datalist.event_set.values('external_id', 'ticket_type', 'name', 'attributions', 'cost_type', 'ticket_name')
         events_to_create = []
         events_to_update = set()
         for event in events:
@@ -167,13 +169,14 @@ class EventImporter(DataImporter):
                     events_to_update.add(eventbase)
                 eventbase.attributions.update(event['attributions'])
                 eventbase.ticket_type = event['ticket_type']
+                eventbase.ticket_name = event['ticket_name']
                 eventbase.name = event['name']
                 eventbase.cost_type = event['cost_type']
             else:
                 event = EventBase(**event, team_id=self.team.id)
                 events_to_create.append(event)
                 event_map[external_id] = event
-        update_fields = ['ticket_type', 'name', 'attributions', 'cost_type']
+        update_fields = ['ticket_type', 'name', 'attributions', 'cost_type', 'ticket_name']
         EventBase.objects.bulk_create(events_to_create, batch_size=settings.BATCH_SIZE_M)
         EventBase.objects.bulk_update(events_to_update, update_fields, batch_size=settings.BATCH_SIZE_M)
 
