@@ -136,7 +136,7 @@ class EventImporter(DataImporter):
         class EventTransfer:
             model = Event
 
-            external_id = Formatted(str, 'name')
+            external_id = Formatted(str, 'id')
 
             name = Formatted(str, 'name')
             ticket_type = Formatted(str, 'ticket_type')
@@ -146,6 +146,7 @@ class EventImporter(DataImporter):
 
     group_event = FieldGroup(key='EVENT', name='活動')
 
+    id = Field('活動編號', group=group_event)
     name = Field('活動名稱', group=group_event)
     ticket_type = Field('票券類型', group=group_event)
     ticket_name = Field('票券名稱', group=group_event)
@@ -254,14 +255,14 @@ class PointLogImporter(DataImporter):
             datetime = Formatted(format_datetime, 'datetime')
             attributions = Formatted(dict, 'attributions')
 
-    group_event_log = FieldGroup(key='EVENTLOG', name='活動記錄')
+    group_event_log = FieldGroup(key='POINTLOG', name='點數記錄')
 
     id = PrimaryField('記錄編號', required=True, group=group_event_log)
-    point_name = Field('活動編號', group=group_event_log)
+    point_name = Field('點數名稱', group=group_event_log)
     member_id = Field('會員ID', group=group_event_log)
     datetime = Field('時間', group=group_event_log, required=True)
     amount = Field('數量', group=group_event_log)
-    attributions = Field('活動記錄屬性', group=group_event_log, is_attributions=True)
+    attributions = Field('點數記錄屬性', group=group_event_log, is_attributions=True)
 
     is_transaction = Field('交易/非交易', group=group_event_log)
 
