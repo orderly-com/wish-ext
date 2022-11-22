@@ -71,7 +71,8 @@ class PointConditionBase(SelectCondition):
     def lazy_init(self, team, *args, **kwargs):
         points = team.pointlogbase_set.filter(removed=False)
 
-        data = list(points.values(id=F('point_name'), text=F('point_name')).unique())
+        point_names = list(points.values_list('point_name', flat=True))
+        data = [{'id': point_name, 'text': point_name} for point_name in point_names]
 
         self.choice(*data)
 
