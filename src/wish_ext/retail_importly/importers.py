@@ -110,7 +110,7 @@ class OrderImporter(DataImporter):
         orderbases_to_update = []
         for order in self.datalist.datalistrow_set.values(
             'order__id', 'order__external_id', 'order__clientbase_id', 'order__datetime', 'order__brand_id',
-            'order__status'
+            'order__status', 'order__attributions'
         ):
 
             brand_id = brand_map.get(order['order__brand_id'])
@@ -126,6 +126,9 @@ class OrderImporter(DataImporter):
                 if order['order__status']:
                     orderbase.status = order['order__status']
                     update = True
+                if order['order__attributions']:
+                    orderbase.attributions.update(order['order__attributions'])
+                    update = True
                 if update and orderbase.id:
                     orderbases_to_update.append(orderbase)
             else:
@@ -134,6 +137,7 @@ class OrderImporter(DataImporter):
                     clientbase_id=order['order__clientbase_id'],
                     datetime=order['order__datetime'],
                     status=order['order__status'],
+                    attributions=order['order__attributions'],
                     brand_id=brand_id,
                     team=self.team
                 )
@@ -143,7 +147,7 @@ class OrderImporter(DataImporter):
                 orderbases_to_create.append(orderbase)
             orders_to_update.append([order['order__id'], orderbase])
         PurchaseBase.objects.bulk_create(orderbases_to_create, batch_size=settings.BATCH_SIZE_M)
-        PurchaseBase.objects.bulk_update(orderbases_to_update, ['datetime', 'brand_id'], batch_size=settings.BATCH_SIZE_M)
+        PurchaseBase.objects.bulk_update(orderbases_to_update, ['datetime', 'brand_id', 'status', 'attributions'], batch_size=settings.BATCH_SIZE_M)
         orders_to_update = [
             Order(
                 id=order_id, purchasebase_id=orderbase.id
