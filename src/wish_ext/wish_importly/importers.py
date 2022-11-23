@@ -204,7 +204,13 @@ class EventLogImporter(DataImporter):
     event_id = Field('活動編號', group=group_event_log)
     member_id = Field('會員ID', group=group_event_log)
     datetime = Field('時間', group=group_event_log)
-    action = Field('領取/使用', group=group_event_log)
+
+    ACTION_CHOIES = {
+        EventLog.ACTION_CLAIM: '領取',
+        EventLog.ACTION_USE: '使用'
+    }
+
+    action = ChoiceField('領取/使用', group=group_event_log, choices=ACTION_CHOIES)
     attributions = Field('活動記錄屬性', group=group_event_log, is_attributions=True)
 
     def process_raw_records(self):
