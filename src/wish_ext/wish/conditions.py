@@ -173,6 +173,7 @@ class TicketNameConditionBase(SelectCondition):
         del self.options['intersection']
 
     def get_eventlog_filter(self, choices):
+        date_range = self.options.get('date_range')
         eventlog_filter = Q(eventlogbase__event__ticket_type__in=choices, eventlogbase__action=self.action)
         if date_range:
             eventlog_filter &= Q(eventlogbase__datetime__range=date_range)
