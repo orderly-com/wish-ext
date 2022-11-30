@@ -58,6 +58,10 @@ class PurchaseValuesConditionBase(RangeCondition):
         self.range(self.minimum, self.maximum)
         self.add_options(
             date_range=DateRangeCondition('日期區間'),
+            transaction_types=MultiCheckBoxCondition('交易狀態').choice(
+                {'id': True, 'text': '交易'},
+                {'id': False, 'text': '非交易'},
+            ),
             brand_ids=SelectCondition('品牌').choice(*brand_choices),
             shops=SelectCondition('門市').choice(*shop_choices)
         )
@@ -67,12 +71,15 @@ class PurchaseValuesConditionBase(RangeCondition):
         shops = self.options.get('shops')
         brand_ids = self.options.get('brand_ids')
         date_range = self.options.get('date_range')
+        transaction_types = self.options.get('transaction_types')
         if shops:
             params[f'purchasebase__attributions__{self.ATTRIBUTION_KEY}__in'] = self.options.get('shops', [])
         if brand_ids:
             params['purchasebase__brand_id__in'] = brand_ids
         if date_range:
             params['purchasebase__datetime__range'] = date_range
+        if transaction_types:
+            params['purchasebase__is_transaction__in'] = transaction_types
         order_filter = Q(
             purchasebase__removed=False, purchasebase__status=PurchaseBase.STATUS_CONFIRMED, **params
         )
@@ -119,21 +126,35 @@ class OrderCount(PurchaseValuesConditionBase):
 @condition('門市名稱', tab='訂單記錄')
 class Shops(SelectCondition):
     ATTRIBUTION_KEY = '門市名稱'
+
+    def real_time_init(self, team, *args, **kwargs):
+        self.add_options(
+            date_range=DateRangeCondition('日期區間'),
+            transaction_types=MultiCheckBoxCondition('交易狀態').choice(
+                {'id': True, 'text': '交易'},
+                {'id': False, 'text': '非交易'},
+            ),
+        )
+
     def filter(self, client_qs: QuerySet, choices: Any) -> Tuple[QuerySet, Q]:
+        date_range = self.options.get('date_range')
+        transaction_types = self.options.get('transaction_types')
+        subquery = PurchaseBase.objects.filter(
+            clientbase_id=OuterRef('id'), removed=False, status=PurchaseBase.STATUS_CONFIRMED,
+            attributions__has_key=self.ATTRIBUTION_KEY, datetime__range=date_range,
+        )
+        if transaction_types:
+            subquery = subquery.filter(is_transaction__in=transaction_types)
         client_qs = client_qs.annotate(
             order_shop_names=Coalesce(
                 Subquery(
-                    PurchaseBase.objects.filter(
-                        clientbase_id=OuterRef('id'), removed=False, status=PurchaseBase.STATUS_CONFIRMED,
-                        attributions__has_key=self.ATTRIBUTION_KEY
-                    )
+                    subquery
                     .annotate(shop_name=KeyTextTransform(self.ATTRIBUTION_KEY, 'attributions'))
                     .annotate(shop_names=ArrayAgg('shop_name'))
                     .values('shop_names')[:1], output_field=ArrayField(TextField())
                 ), []
             )
         )
-        print(client_qs.values('order_shop_names'), choices)
         if self.options.get('intersection', False):
             q = Q(order_shop_names__contains=choices)
         else:
@@ -152,16 +173,18 @@ class Shops(SelectCondition):
 
 
 @condition('單筆金額', tab='訂單記錄')
-class AnyOrderPriceRange(RangeCondition):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.range(0, 5000).config(postfix='元')
+class AnyOrderPriceRange(PurchaseValuesConditionBase):
+    minimum = 0
+    maximum = 5000
 
     def filter(self, client_qs: QuerySet, value_range: Any) -> Tuple[QuerySet, Q]:
-
-        q = Q(purchasebase__total_price__range=value_range)
+        order_filter = self.get_order_filter()
+        order_filter &= Q(purchasebase__total_price__range=value_range)
+        client_qs = client_qs.annotate(order_count=Coalesce(Count('purchasebase__total_price', filter=order_filter), 0))
+        q = Q(order_count__gt=0)
 
         return client_qs, q
+
 
 @condition('RFM', tab='訂單記錄')
 class RFM(Condition):

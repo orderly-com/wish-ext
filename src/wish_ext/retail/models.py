@@ -505,6 +505,7 @@ class PurchaseBase(OrderBase):
     attributions = JSONField(default=dict)
     categories = models.ManyToManyField(ProductCategory, blank=True)
     status = models.CharField(max_length=64, blank=False, null=False, default=STATUS_CONFIRMED)
+    is_transaction = models.BooleanField(default=True)
 
 
 class OrderProduct(BaseModel):

@@ -53,6 +53,7 @@ class Order(RawModel):
     external_id = models.TextField(blank=False)
     clientbase_id = models.IntegerField(blank=True, null=True)
     status = models.CharField(max_length=64, default=str)
+    is_transaction = models.BooleanField(default=True)
     brand_id = models.CharField(max_length=64, default=str)
     total_price = models.FloatField(default=0.0)
     datetime = models.DateTimeField(blank=True, null=True)

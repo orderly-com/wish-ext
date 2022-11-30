@@ -72,6 +72,12 @@ class OrderImporter(DataImporter):
     }
     refound = ChoiceField('是否為退貨', group=group_order, choices=REFOUND_CHOICES)
 
+    TRANSACTION_TYPE_CHOIES = {
+        True: '交易',
+        False: '非交易',
+    }
+
+    is_transaction = ChoiceField('交易狀態', group=group_order, choices=TRANSACTION_TYPE_CHOIES)
     STATUS_CHOIES = {
         PurchaseBase.STATUS_CONFIRMED: '確認',
         PurchaseBase.STATUS_ABANDONED: '取消',
