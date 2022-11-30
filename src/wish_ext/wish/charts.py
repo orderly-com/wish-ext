@@ -175,7 +175,7 @@ class Levels:
     name = '等級模組'
     charts = [
         MemberLevelPieChart.preset('等級人數圓餅圖'),
-        LevelUpMatrMatrix.preset('等級升降熱區圖'),
+        # LevelUpMatrMatrix.preset('等級升降熱區圖'),
         FutureLevelDue.preset('等級即將到期直條圖', width='full'),
         LevelClientCountTracing.preset('等級人數往期直條圖')
     ]
