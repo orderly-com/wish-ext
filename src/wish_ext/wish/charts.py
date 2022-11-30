@@ -1,7 +1,7 @@
 import datetime
 import itertools
 import statistics
-from dateutil import relativedelta
+from dateutil.relativedelta import relativedelta
 
 from django.utils import timezone
 from django.db.models.functions import TruncDate, ExtractMonth, ExtractYear, Cast
@@ -64,6 +64,61 @@ class LevelUpMatrMatrix(MatrixChart):
         for item in data:
             self.set_value(item['x'], item['y'], item['v'])
 
+
+@overview_charts.chart(name='等級即將到期直條圖')
+class FutureLevelDue(BarChart):
+    def draw(self):
+        now = timezone.now()
+        client_qs = self.team.clientbase_set.filter(removed=False)
+        date_start = now.replace(day=1, hour=0, minute=0, second=0)
+
+        client_qs = client_qs.annotate(
+            current_level_due=Subquery(
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__lt=now).order_by('-from_datetime').values('to_datetime')[:1]
+            ),
+            current_level_id=Subquery(
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__lt=now).order_by('-from_datetime').values('to_level_id')[:1]
+            )
+        )
+        if self.options.get('table_mode'):
+            levels = MemberLevelBase.objects.filter(removed=False).values_list('id', 'name')
+            for level_id, name in levels:
+                labels = []
+                data = []
+                for i in range(12):
+                    month_start = date_start + relativedelta(months=i)
+                    month_end = month_start + relativedelta(months=1)
+                    labels.append(month_start.strftime('%Y/%m'))
+                    clients = client_qs.filter(current_level_id=level_id, current_level_due__range=[month_start, month_end])
+                    data.append(clients.count())
+
+                self.set_labels(labels)
+                notes = {
+                    'tooltip_value': '等級即將到期數 <br>{data} 人',
+                    'tooltip_name': ' '
+                }
+
+                self.create_label(name=name, data=data, notes=notes)
+
+        else:
+            labels = []
+            data = []
+            for i in range(12):
+                month_start = date_start + relativedelta(months=i)
+                month_end = month_start + relativedelta(months=1)
+                labels.append(month_start.strftime('%Y/%m'))
+                clients = client_qs.filter(current_level_due__range=[month_start, month_end])
+                data.append(clients.count())
+
+            self.set_labels(labels)
+            notes = {
+                'tooltip_value': '等級即將到期數 <br>{data} 人',
+                'tooltip_name': ' '
+            }
+
+            self.create_label(name='人數', data=data, notes=notes)
+
+
 @past_charts.chart(name='等級人數往期直條圖')
 class LevelClientCountTracing(BarChart):
     '''
@@ -93,24 +148,24 @@ class LevelClientCountTracing(BarChart):
 
     def draw(self):
         self.trace_days = self.options.get('trace_days', self.trace_days)
-        data = []
         now = timezone.now()
         client_qs = self.team.clientbase_set.filter(removed=False)
         self.set_total(len(client_qs))
         levels = MemberLevelBase.objects.filter(removed=False).order_by('rank').values_list('id', 'name')
         for level_id, name in levels:
+            data = []
             for days in self.trace_days:
                 date = now - datetime.timedelta(days=days)
-                client_qs = client_qs.annotate(
+                qs = client_qs.annotate(
                     current_level_id=Subquery(
                         LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__lt=date).order_by('-from_datetime').values('to_level_id')[:1]
                     )
                 )
-                clients = client_qs.filter(current_level_id=level_id)
+                clients = qs.filter(current_level_id=level_id)
                 data.append(clients.count())
-
             notes = {
-                'tooltip_value': f'{{data}} 人<br> 佔會員比例: {{percentage}}%'
+                'tooltip_value': f'{name}會員人數<br>{{data}} 人',
+                'tooltip_name': ' '
             }
 
             self.create_label(name=name, data=data, notes=notes)
@@ -121,5 +176,6 @@ class Levels:
     charts = [
         MemberLevelPieChart.preset('等級人數圓餅圖'),
         LevelUpMatrMatrix.preset('等級升降熱區圖'),
+        FutureLevelDue.preset('等級即將到期直條圖', width='full'),
         LevelClientCountTracing.preset('等級人數往期直條圖')
     ]
