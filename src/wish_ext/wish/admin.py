@@ -10,7 +10,7 @@ from core.utils import ReadableJSONFormField
 from plan.models import PlanSetting
 
 from .models import (
-    Brand, MemberLevelBase
+    Brand, MemberLevelBase, LevelLogBase
 )
 
 
@@ -40,3 +40,5 @@ class BrandAdmin(admin.ModelAdmin):
     )
 
     search_fields = ('name', 'external_id')
+
+admin.site.register(LevelLogBase)
