@@ -19,10 +19,15 @@ from .models import EventBase, LevelLogBase, EventLogBase, EventBase
 
 
 class EventConditionBase(SelectCondition):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.add_options(date_range=DateRangeCondition('日期區間'))
+
     def filter(self, client_qs: QuerySet, choices: Any) -> Tuple[QuerySet, Q]:
+        date_range = self.options.get('date_range')
         client_qs = client_qs.annotate(
             event_ids=Subquery(
-                EventLogBase.objects.filter(clientbase_id=OuterRef('id'))
+                EventLogBase.objects.filter(clientbase_id=OuterRef('id'), datetime__range=date_range)
                 .annotate(event_ids=ArrayAgg('event_id'))
                 .values('event_ids')[:1], output_field=ArrayField(IntegerField())
             ),
@@ -67,22 +72,30 @@ class CreditEventCondition(EventConditionBase):
 
 
 class PointConditionBase(SelectCondition):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.add_options(date_range=DateRangeCondition('日期區間'))
+
     log_filter = Q()
     def lazy_init(self, team, *args, **kwargs):
         points = team.pointlogbase_set.filter(removed=False)
 
-        point_names = list(points.values_list('point_name', flat=True))
+        point_names = list(points.values_list('point_name', flat=True).distinct())
         data = [{'id': point_name, 'text': point_name} for point_name in point_names]
 
         self.choice(*data)
 
     def filter(self, client_qs: QuerySet, choices: Any) -> Tuple[QuerySet, Q]:
-        client_qs = client_qs.annotate(point_names=ArrayAgg('pointlogbase__point_name', filter=self.log_filter))
+        date_range = self.options.get('date_range')
+        log_filter = self.log_filter
+        if date_range:
+            log_filter &= Q(pointlogbase__datetime__range=date_range)
+        client_qs = client_qs.annotate(point_names=ArrayAgg('pointlogbase__point_name', filter=log_filter))
 
         if self.options.get('intersection', False):
-            q &= Q(point_names__contains=choices)
+            q = Q(point_names__contains=choices)
         else:
-            q &= Q(point_names__overlap=choices)
+            q = Q(point_names__overlap=choices)
 
         return client_qs, q
 
@@ -135,7 +148,15 @@ class LevelCondition(SelectCondition):
 class TicketTypeConditionBase(SelectCondition):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.add_options(date_range=DateRangeCondition('日期區間'))
         del self.options['intersection']
+
+    def get_eventlog_filter(self, choices):
+        date_range = self.options.get('date_range')
+        eventlog_filter = Q(eventlogbase__event__ticket_type__in=choices, eventlogbase__action=self.action)
+        if date_range:
+            eventlog_filter &= Q(eventlogbase__datetime__range=date_range)
+        return eventlog_filter
 
     def lazy_init(self, team, *args, **kwargs):
         ticket_types = team.eventbase_set.filter(removed=False).values_list('ticket_type', flat=True).distinct()
@@ -148,7 +169,15 @@ class TicketTypeConditionBase(SelectCondition):
 class TicketNameConditionBase(SelectCondition):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.add_options(date_range=DateRangeCondition('日期區間'))
         del self.options['intersection']
+
+    def get_eventlog_filter(self, choices):
+        date_range = self.options.get('date_range')
+        eventlog_filter = Q(eventlogbase__event__ticket_type__in=choices, eventlogbase__action=self.action)
+        if date_range:
+            eventlog_filter &= Q(eventlogbase__datetime__range=date_range)
+        return eventlog_filter
 
     def lazy_init(self, team, *args, **kwargs):
         ticket_names = team.eventbase_set.filter(removed=False).values_list('ticket_name', flat=True).distinct()
@@ -159,12 +188,14 @@ class TicketNameConditionBase(SelectCondition):
 
 @condition('發券_票券類型', tab='票券')
 class TicketTypeClaim(TicketTypeConditionBase):
+    action = EventLogBase.ACTION_CLAIM
     def filter(self, client_qs: QuerySet, choices: Any) -> Tuple[QuerySet, Q]:
+        date_range = self.options.get('date_range')
         now = timezone.now()
         client_qs = client_qs.annotate(
             claim_ticket_type_event_count=Count(
                 'eventlogbase',
-                filter=Q(eventlogbase__event__ticket_type__in=choices, eventlogbase__action=EventLogBase.ACTION_CLAIM)
+                filter=self.get_eventlog_filter(choices)
             )
         )
         q = Q(claim_ticket_type_event_count__gt=0)
@@ -174,12 +205,13 @@ class TicketTypeClaim(TicketTypeConditionBase):
 
 @condition('發券_票券名稱', tab='票券')
 class TicketNameClaim(TicketNameConditionBase):
+    action = EventLogBase.ACTION_CLAIM
     def filter(self, client_qs: QuerySet, choices: Any) -> Tuple[QuerySet, Q]:
         now = timezone.now()
         client_qs = client_qs.annotate(
             claim_ticket_name_event_count=Count(
                 'eventlogbase',
-                filter=Q(eventlogbase__event__ticket_name__in=choices, eventlogbase__action=EventLogBase.ACTION_CLAIM)
+                filter=self.get_eventlog_filter(choices)
             )
         )
         q = Q(claim_ticket_name_event_count__gt=0)
@@ -188,12 +220,13 @@ class TicketNameClaim(TicketNameConditionBase):
 
 @condition('核銷_票券類型', tab='票券')
 class TicketTypeUse(TicketTypeConditionBase):
+    action = EventLogBase.ACTION_USE
     def filter(self, client_qs: QuerySet, choices: Any) -> Tuple[QuerySet, Q]:
         now = timezone.now()
         client_qs = client_qs.annotate(
             claim_ticket_type_event_count=Count(
                 'eventlogbase',
-                filter=Q(eventlogbase__event__ticket_type__in=choices, eventlogbase__action=EventLogBase.ACTION_USE)
+                filter=self.get_eventlog_filter(choices)
             )
         )
         q = Q(claim_ticket_type_event_count__gt=0)
@@ -203,12 +236,13 @@ class TicketTypeUse(TicketTypeConditionBase):
 
 @condition('核銷_票券名稱', tab='票券')
 class TicketNameUse(TicketNameConditionBase):
+    action = EventLogBase.ACTION_USE
     def filter(self, client_qs: QuerySet, choices: Any) -> Tuple[QuerySet, Q]:
         now = timezone.now()
         client_qs = client_qs.annotate(
             claim_ticket_name_event_count=Count(
                 'eventlogbase',
-                filter=Q(eventlogbase__event__ticket_name__in=choices, eventlogbase__action=EventLogBase.ACTION_USE)
+                filter=self.get_eventlog_filter(choices)
             )
         )
         q = Q(claim_ticket_name_event_count__gt=0)

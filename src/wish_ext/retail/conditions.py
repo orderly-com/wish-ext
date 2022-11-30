@@ -44,38 +44,81 @@ class Brands(SelectCondition):
         self.choice(*data)
 
 
-@condition('交易資料', tab='訂單記錄')
-class PurchaseValues(SingleSelectCondition):
-    class MODE:
-        TOTAL = 'total'
-        AVG = 'avg'
-        ORDER_COUNT = 'order_count'
-        CHOICES = {
-            TOTAL: '營業額（總額）',
-            AVG: '平均金額',
-            ORDER_COUNT: '交易單數'
-        }
+class PurchaseValuesConditionBase(RangeCondition):
+    ATTRIBUTION_KEY = '門市名稱'
+    minimum = 0
+    maximum = 10000
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.add_options(value_range=RangeCondition('數值範圍').range(0, 10000).config(postfix='元'))
-        choices = []
-        for choice_key, name in self.MODE.CHOICES.items():
-            choices.append({'id': choice_key, 'text': name})
-        self.choice(*choices)
+    def real_time_init(self, team, *args, **kwargs):
+        brand_choices = team.brand_set.filter(removed=False).values('id', text=F('name')).order_by('order')
+        shops = team.purchasebase_set.filter(removed=False).values_list(f'attributions__{self.ATTRIBUTION_KEY}', flat=True).distinct()
+        shop_choices = [
+            {'id': shop_name, 'text': shop_name} for shop_name in shops
+        ]
+        self.range(self.minimum, self.maximum)
+        self.add_options(
+            date_range=DateRangeCondition('日期區間'),
+            transaction_types=MultiCheckBoxCondition('交易狀態').choice(
+                {'id': True, 'text': '交易'},
+                {'id': False, 'text': '非交易'},
+            ),
+            brand_ids=SelectCondition('品牌').choice(*brand_choices),
+            shops=SelectCondition('門市').choice(*shop_choices)
+        )
 
-    def filter(self, client_qs: QuerySet, mode: Any) -> Tuple[QuerySet, Q]:
-        value_range = self.options.get('value_range')
-        order_filter = Q(purchasebase__removed=False, purchasebase__status=PurchaseBase.STATUS_CONFIRMED)
-        if mode == self.MODE.TOTAL:
-            client_qs = client_qs.annotate(total_price=Coalesce(Sum('purchasebase__total_price', filter=order_filter), 0))
-            q = Q(total_price__range=value_range)
-        elif mode == self.MODE.AVG:
-            client_qs = client_qs.annotate(avg_price=Coalesce(Avg('purchasebase__total_price', filter=order_filter), 0))
-            q = Q(avg_price__range=value_range)
-        else:
-            client_qs = client_qs.annotate(order_count=Coalesce(Count('purchasebase__total_price', filter=order_filter), 0))
-            q = Q(order_count__range=value_range)
+    def get_order_filter(self):
+        params = {}
+        shops = self.options.get('shops')
+        brand_ids = self.options.get('brand_ids')
+        date_range = self.options.get('date_range')
+        transaction_types = self.options.get('transaction_types')
+        if shops:
+            params[f'purchasebase__attributions__{self.ATTRIBUTION_KEY}__in'] = self.options.get('shops', [])
+        if brand_ids:
+            params['purchasebase__brand_id__in'] = brand_ids
+        if date_range:
+            params['purchasebase__datetime__range'] = date_range
+        if transaction_types:
+            params['purchasebase__is_transaction__in'] = transaction_types
+        order_filter = Q(
+            purchasebase__removed=False, purchasebase__status=PurchaseBase.STATUS_CONFIRMED, **params
+        )
+        return order_filter
+
+
+@condition('營業額', tab='訂單記錄')
+class TotalSales(PurchaseValuesConditionBase):
+
+    def filter(self, client_qs: QuerySet, value_range: Any) -> Tuple[QuerySet, Q]:
+
+        client_qs = client_qs.annotate(total_sales=Coalesce(Sum('purchasebase__total_price', filter=self.get_order_filter()), 0))
+        q = Q(total_sales__range=value_range)
+
+        return client_qs, q
+
+
+@condition('平均金額', tab='訂單記錄')
+class AvgAmount(PurchaseValuesConditionBase):
+    minimum = 0
+    maximum = 1000
+
+    def filter(self, client_qs: QuerySet, value_range: Any) -> Tuple[QuerySet, Q]:
+
+        client_qs = client_qs.annotate(avg_amount=Coalesce(Avg('purchasebase__total_price', filter=self.get_order_filter()), 0))
+        q = Q(avg_amount__range=value_range)
+
+        return client_qs, q
+
+
+@condition('交易單數', tab='訂單記錄')
+class OrderCount(PurchaseValuesConditionBase):
+    minimum = 0
+    maximum = 50
+
+    def filter(self, client_qs: QuerySet, value_range: Any) -> Tuple[QuerySet, Q]:
+
+        client_qs = client_qs.annotate(order_count=Coalesce(Count('purchasebase__total_price', filter=self.get_order_filter()), 0))
+        q = Q(order_count__range=value_range)
 
         return client_qs, q
 
@@ -83,21 +126,35 @@ class PurchaseValues(SingleSelectCondition):
 @condition('門市名稱', tab='訂單記錄')
 class Shops(SelectCondition):
     ATTRIBUTION_KEY = '門市名稱'
+
+    def real_time_init(self, team, *args, **kwargs):
+        self.add_options(
+            date_range=DateRangeCondition('日期區間'),
+            transaction_types=MultiCheckBoxCondition('交易狀態').choice(
+                {'id': True, 'text': '交易'},
+                {'id': False, 'text': '非交易'},
+            ),
+        )
+
     def filter(self, client_qs: QuerySet, choices: Any) -> Tuple[QuerySet, Q]:
+        date_range = self.options.get('date_range')
+        transaction_types = self.options.get('transaction_types')
+        subquery = PurchaseBase.objects.filter(
+            clientbase_id=OuterRef('id'), removed=False, status=PurchaseBase.STATUS_CONFIRMED,
+            attributions__has_key=self.ATTRIBUTION_KEY, datetime__range=date_range,
+        )
+        if transaction_types:
+            subquery = subquery.filter(is_transaction__in=transaction_types)
         client_qs = client_qs.annotate(
             order_shop_names=Coalesce(
                 Subquery(
-                    PurchaseBase.objects.filter(
-                        clientbase_id=OuterRef('id'), removed=False, status=PurchaseBase.STATUS_CONFIRMED,
-                        attributions__has_key=self.ATTRIBUTION_KEY
-                    )
+                    subquery
                     .annotate(shop_name=KeyTextTransform(self.ATTRIBUTION_KEY, 'attributions'))
                     .annotate(shop_names=ArrayAgg('shop_name'))
                     .values('shop_names')[:1], output_field=ArrayField(TextField())
                 ), []
             )
         )
-        print(client_qs.values('order_shop_names'), choices)
         if self.options.get('intersection', False):
             q = Q(order_shop_names__contains=choices)
         else:
@@ -116,16 +173,18 @@ class Shops(SelectCondition):
 
 
 @condition('單筆金額', tab='訂單記錄')
-class AnyOrderPriceRange(RangeCondition):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.range(0, 5000).config(postfix='元')
+class AnyOrderPriceRange(PurchaseValuesConditionBase):
+    minimum = 0
+    maximum = 5000
 
     def filter(self, client_qs: QuerySet, value_range: Any) -> Tuple[QuerySet, Q]:
-
-        q = Q(purchasebase__total_price__range=value_range)
+        order_filter = self.get_order_filter()
+        order_filter &= Q(purchasebase__total_price__range=value_range)
+        client_qs = client_qs.annotate(order_count=Coalesce(Count('purchasebase__total_price', filter=order_filter), 0))
+        q = Q(order_count__gt=0)
 
         return client_qs, q
+
 
 @condition('RFM', tab='訂單記錄')
 class RFM(Condition):

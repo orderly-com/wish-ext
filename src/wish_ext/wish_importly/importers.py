@@ -150,7 +150,13 @@ class EventImporter(DataImporter):
     name = Field('活動名稱', group=group_event)
     ticket_type = Field('票券類型', group=group_event)
     ticket_name = Field('票券名稱', group=group_event)
-    cost_type = Field('免費/點數/兌換碼', group=group_event)
+
+    COST_TYPE_CHOICES = {
+        EventBase.COST_TYPE_FREE: '免費',
+        EventBase.COST_TYPE_CODE: '兌換碼',
+        EventBase.COST_TYPE_CREDIT: '點數',
+    }
+    cost_type = ChoiceField('免費/點數/兌換碼', group=group_event, choices=COST_TYPE_CHOICES)
     attributions = Field('活動屬性', group=group_event, is_attributions=True)
 
     def process_raw_records(self):
@@ -204,7 +210,13 @@ class EventLogImporter(DataImporter):
     event_id = Field('活動編號', group=group_event_log)
     member_id = Field('會員ID', group=group_event_log)
     datetime = Field('時間', group=group_event_log)
-    action = Field('領取/使用', group=group_event_log)
+
+    ACTION_CHOIES = {
+        EventLog.ACTION_CLAIM: '領取',
+        EventLog.ACTION_USE: '使用'
+    }
+
+    action = ChoiceField('領取/使用', group=group_event_log, choices=ACTION_CHOIES)
     attributions = Field('活動記錄屬性', group=group_event_log, is_attributions=True)
 
     def process_raw_records(self):
