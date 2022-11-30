@@ -6,6 +6,7 @@ from dateutil import relativedelta
 from django.utils import timezone
 from django.db.models.functions import TruncDate, ExtractMonth, ExtractYear, Cast
 from django.db.models import Count, Func, Max, Min, IntegerField
+from django.db.models.expressions import OuterRef, Subquery
 
 from charts.exceptions import NoData
 from charts.registries import chart_category
@@ -18,11 +19,30 @@ from cerem.utils import F
 from orderly_core.team.charts import overview_charts, AttributionPieChart, past_charts
 from charts.drawers import MatrixChart
 from charts.registries import chart_category, dashboard_preset
+from .models import EventBase, LevelLogBase, EventLogBase, EventBase, MemberLevelBase
 
+
+@overview_charts.chart(name='等級人數圓餅圖')
+class MemberLevelPieChart(PieChart):
+    def draw(self):
+        now = timezone.now()
+        clients = self.team.clientbase_set.filter(removed=False)
+        if not clients.exists():
+            raise NoData('資料不足')
+        client_qs = clients.annotate(
+            current_level_name=Subquery(
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__lt=now).order_by('-from_datetime').values('to_level__name')[:1]
+            )
+        )
+        client_qs = client_qs.filter(current_level_name__isnull=False).values('current_level_name').annotate(count=Count('id'))
+        for name, count in client_qs.values_list('current_level_name', 'count'):
+            self.create_label(name=name, data=count,notes={'tooltip_value': '{data} 人'})
 
 @overview_charts.chart(name='等級升降續熱區圖')
 class LevelUpMatrMatrix(MatrixChart):
     def draw(self):
+        levels = MemberLevelBase.objects.filter(removed=False).order_by('rank').values_list('id', 'name')
+        print('levels: ', levels)
         data = [
             {'x': '初始', 'y': '一般會員', 'v': 0},
             {'x': '升等', 'y': '一般會員', 'v': 0.2},
@@ -99,7 +119,7 @@ class LevelClientCountTracing(BarChart):
 class Levels:
     name = '等級模組'
     charts = [
-        AttributionPieChart.preset('等級人數圓餅圖'),
+        MemberLevelPieChart.preset('等級人數圓餅圖'),
         LevelUpMatrMatrix.preset('等級升降熱區圖'),
         LevelClientCountTracing.preset('等級人數往期直條圖')
     ]
