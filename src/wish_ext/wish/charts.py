@@ -40,29 +40,95 @@ class MemberLevelPieChart(PieChart):
 
 @overview_charts.chart(name='等級升降續熱區圖')
 class LevelUpMatrMatrix(MatrixChart):
+    def __init__(self):
+        super().__init__()
+        self.add_options(join_time_range=DateRangeCondition('時間範圍'))
+
+    def get_level_rank(self, client_data:list, level_data:dict):
+        for index, per_cl_data in enumerate(client_data):
+            current_level_id = per_cl_data.get('current_level_id','')
+            previous_level_id = per_cl_data.get('previous_level_id','')
+            if current_level_id:
+                if current_level_id == level_data[current_level_id]['id']:
+                    client_data[index]['current_level_name'] = level_data[current_level_id]['name']
+                    client_data[index]['current_rank'] = level_data[current_level_id]['rank']
+
+            if previous_level_id:
+                if previous_level_id == level_data[previous_level_id]['id']:
+                    client_data[index]['previous_level_name'] = level_data[previous_level_id]['name']
+                    client_data[index]['previous_rank'] = level_data[previous_level_id]['rank']
+
+        return client_data
+
+    def level_data_dict(self, level_data:list):
+        data = {}
+        for per_data in level_data:
+            data[per_data['id']] = per_data
+        return data
+
+    def level_eval(self, data:list):
+        res_data = []
+        for per_data in data:
+            current_rank = per_data.get('current_rank')
+            previous_rank = per_data.get('previous_rank')
+            if current_rank is None and previous_rank is None:
+                per_data['x'] = '無資料'
+                continue
+            if current_rank and not previous_rank:
+                per_data['x'] = '初始'
+            if current_rank is not None and previous_rank:
+                if current_rank == previous_rank:
+                    per_data['x'] = '續等'
+                elif current_rank > previous_rank:
+                    per_data['x'] = '升等'
+                elif current_rank < previous_rank:
+                    per_data['x'] = '降等'
+            res_data.append(per_data)
+        return res_data
+
+    def data_assign(self, data: list, level_data):
+        format_data = {}
+        for level_id, level_per_data in level_data.items():
+            for level_direction in ['初始', '升等', '降等', '續等']:
+                key_string = level_direction + '__' + level_per_data['name']
+                format_data[key_string] = 0
+        # format_data: {'初始__一般會員': 0, '升等__一般會員': 0, '降等__一般會員': 0 ...}
+        for per_data in data:
+            per_level = per_data.get('x', '')
+            per_current_level_name = per_data.get('current_level_name', '')
+            if per_level and per_current_level_name:
+                key_string = per_level + '__' + per_current_level_name
+                format_data[key_string] = format_data.get(key_string, 0) + 1
+
+        return format_data
+
+
     def draw(self):
-        levels = MemberLevelBase.objects.filter(removed=False).order_by('rank').values_list('id', 'name')
-        print('levels: ', levels)
-        data = [
-            {'x': '初始', 'y': '一般會員', 'v': 0},
-            {'x': '升等', 'y': '一般會員', 'v': 0.2},
-            {'x': '初始', 'y': '銅等會員', 'v': 0.6},
-            {'x': '升等', 'y': '銅等會員', 'v': 1.0},
-            {'x': '降等', 'y': '一般會員', 'v': 0.2},
-            {'x': '降等', 'y': '銅等會員', 'v': 0.6},
-            {'x': '降等', 'y': '銀等會員', 'v': 1.0},
-            {'x': '初始', 'y': '銀等會員', 'v': 0.2},
-            {'x': '升等', 'y': '銀等會員', 'v': 0.4},
-            {'x': '續等', 'y': '一般會員', 'v': 0.6},
-            {'x': '續等', 'y': '銅等會員', 'v': 1.0},
-            {'x': '續等', 'y': '銀等會員', 'v': 0.2},
-            {'x': '降等', 'y': '金等會員', 'v': 1.0},
-            {'x': '初始', 'y': '金等會員', 'v': 0.2},
-            {'x': '升等', 'y': '金等會員', 'v': 0.4},
-            {'x': '續等', 'y': '金等會員', 'v': 0.6},
-        ]
-        for item in data:
-            self.set_value(item['x'], item['y'], item['v'])
+        now = timezone.now()
+        clients = self.team.clientbase_set.filter(removed=False)
+        if not clients.exists():
+            raise NoData('資料不足')
+
+        date_start, date_end = self.get_date_range('join_time_range', now - datetime.timedelta(days=365), now)
+
+        client_qs = clients.annotate(
+            current_level_id=Subquery(
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__id')[:1]
+            ),
+            previous_level_id=Subquery(
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('from_level__id')[:1]
+            )
+        )
+        level_data = list(MemberLevelBase.objects.filter(removed=False).values())
+        level_data = self.level_data_dict(level_data)
+        client_data = self.get_level_rank(list(client_qs.values()), level_data)
+        f_data = self.level_eval(client_data)
+        f_data = self.data_assign(f_data, level_data)
+        for key_string, count in f_data.items():
+            key_string_list = key_string.split('__')
+            x = key_string_list[0]
+            y = ''.join(key_string_list[1:])
+            self.set_value(x, y, count)
 
 
 @overview_charts.chart(name='等級即將到期直條圖')
@@ -175,7 +241,7 @@ class Levels:
     name = '等級模組'
     charts = [
         MemberLevelPieChart.preset('等級人數圓餅圖'),
-        # LevelUpMatrMatrix.preset('等級升降熱區圖'),
+        #LevelUpMatrMatrix.preset('等級升降熱區圖'),
         FutureLevelDue.preset('等級即將到期直條圖', width='full'),
         LevelClientCountTracing.preset('等級人數往期直條圖')
     ]
