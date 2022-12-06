@@ -5,7 +5,7 @@ from dateutil.relativedelta import relativedelta
 
 from django.utils import timezone
 from django.db.models.functions import TruncDate, ExtractMonth, ExtractYear, Cast
-from django.db.models import Count, Func, Max, Min, IntegerField
+from django.db.models import Count, Func, Max, Min, IntegerField, Sum
 from django.db.models.expressions import OuterRef, Subquery
 
 from charts.exceptions import NoData
@@ -20,6 +20,7 @@ from orderly_core.team.charts import overview_charts, AttributionPieChart, past_
 from charts.drawers import MatrixChart
 from charts.registries import chart_category, dashboard_preset
 from .models import EventBase, LevelLogBase, EventLogBase, EventBase, MemberLevelBase
+from wish_ext.retail.models import PurchaseBase
 
 
 @overview_charts.chart(name='等級人數圓餅圖')
@@ -336,6 +337,148 @@ class FutureLevelDueTrend(LineChart):
             }
 
             self.create_label(name=name, data=data, notes=notes)
+@past_charts.chart(name='交易人數往期直條圖')
+class PurchaseMemberCount(BarChart):
+    '''
+    Hidden options:
+        -trace_days:
+            format: []
+            default: [365, 30, 7, 1]
+            explain: determine datetime points of x-axis.
+    '''
+    def __init__(self):
+        super().__init__()
+        self.trace_days = [365, 30, 7, 1]
+
+    def get_labels(self):
+        labels = []
+        for days in self.trace_days:
+            labels.append(f'{days} 天前')
+        return labels
+
+    def get_labels_info(self):
+        labels = []
+        for days in self.trace_days:
+            now = timezone.now()
+            date_string = (now - datetime.timedelta(days=days)).strftime('%Y 年 %m 月 %d 日')
+            labels.append(f'{date_string} ~ {date_string}')
+        return labels
+
+    def draw(self):
+        self.trace_days = self.options.get('trace_days', self.trace_days)
+        data = []
+        now = timezone.now()
+        for days in self.trace_days:
+            date = now - datetime.timedelta(days=days)
+            # distinct data base on clientbase_id
+            clients = PurchaseBase.objects.filter(removed=False).values('clientbase_id').distinct().filter(datetime__lt=date)
+            data.append(clients.count())
+        notes = {
+            'tooltip_value': f'{{data}} 人'
+        }
+
+        self.create_label(name=' ', data=data, notes=notes)
+
+
+@past_charts.chart(name='交易金額往期直條圖')
+class PurchaseNumberCount(BarChart):
+    ACCUMULATED = 'all'
+    ADDED = 'member'
+    '''
+    Hidden options:
+        -trace_days:
+            format: []
+            default: [365, 30, 7, 1]
+            explain: determine datetime points of x-axis.
+    '''
+    def __init__(self):
+        super().__init__()
+        self.trace_days = [365, 30, 7, 1]
+        self.add_options(
+            #join_time_range=DateRangeCondition('時間範圍'),
+            mode=ModeCondition('').choice(
+                {'text': '營業額', 'id': self.ADDED},
+                {'text': '客單價', 'id': self.ACCUMULATED},
+                {'text': '平均金額', 'id': self.ACCUMULATED}
+            ).default(self.ACCUMULATED)
+        )
+
+    def get_labels(self):
+        labels = []
+        for days in self.trace_days:
+            labels.append(f'{days} 天前')
+        return labels
+
+    def get_labels_info(self):
+        labels = []
+        for days in self.trace_days:
+            now = timezone.now()
+            date_string = (now - datetime.timedelta(days=days)).strftime('%Y 年 %m 月 %d 日')
+            labels.append(f'{date_string} ~ {date_string}')
+        return labels
+
+    def draw(self):
+        self.trace_days = self.options.get('trace_days', self.trace_days)
+        data = []
+        now = timezone.now()
+        # purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        #total_price = purchase_base_set.aggregate(Sum('total_price'))
+        #print('total_price: ', total_price)
+        #self.set_total(total_price['total_price__sum'])
+        for days in self.trace_days:
+            date = now - datetime.timedelta(days=days)
+            purchase_base_set = PurchaseBase.filter(removed=False).filter(datetime__lt=date)
+            prices = purchase_base_set.values()
+            data.append(prices)
+        notes = {
+            'tooltip_value': f'{{data}} 人'
+        }
+
+        self.create_label(name=' ', data=data, notes=notes)
+
+@past_charts.chart(name='交易單數往期直條圖')
+class PurchaseOrderCount(BarChart):
+    '''
+    Hidden options:
+        -trace_days:
+            format: []
+            default: [365, 30, 7, 1]
+            explain: determine datetime points of x-axis.
+    '''
+    def __init__(self):
+        super().__init__()
+        self.trace_days = [365, 30, 7, 1]
+
+    def get_labels(self):
+        labels = []
+        for days in self.trace_days:
+            labels.append(f'{days} 天前')
+        return labels
+
+    def get_labels_info(self):
+        labels = []
+        for days in self.trace_days:
+            now = timezone.now()
+            date_string = (now - datetime.timedelta(days=days)).strftime('%Y 年 %m 月 %d 日')
+            labels.append(f'{date_string} ~ {date_string}')
+        return labels
+
+    def draw(self):
+        self.trace_days = self.options.get('trace_days', self.trace_days)
+        data = []
+        now = timezone.now()
+        purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        self.set_total(len(purchase_base_set))
+        for days in self.trace_days:
+            date = now - datetime.timedelta(days=days)
+            purchase_base = purchase_base_set.filter(datetime__lt=date)
+            data.append(purchase_base.count())
+        notes = {
+            'tooltip_value': f'{{data}} 人'
+        }
+
+        self.create_label(name=' ', data=data, notes=notes)
+
 
 
 
@@ -349,4 +492,14 @@ class Levels:
         LevelClientCountTracing.preset('等級人數往期直條圖'),
         MemberLevelTrend.preset('等級人數折線圖', width='full'),
         FutureLevelDueTrend.preset('等級即將到期趨勢折線圖', width='full')
+    ]
+
+@dashboard_preset
+class Purchae:
+    name = '交易模組'
+    charts = [
+        PurchaseMemberCount.preset('交易人數往期直條圖', chart_type='bar'),
+        #PurchaseNumberCount.preset('交易金額往期直條圖', chart_type='bar'),
+        PurchaseOrderCount.preset('交易單數往期直條圖', chart_type='bar'),
+
     ]
