@@ -8,6 +8,8 @@ from django.utils import timezone
 from core.utils import ReadableJSONFormField
 
 from plan.models import PlanSetting
+from ..retail.models import RepurchaseCycle, ProductCategory, RetailProduct, PurchaseBase, OrderProduct
+
 
 from .models import (
     Brand, MemberLevelBase, LevelLogBase
@@ -42,3 +44,8 @@ class BrandAdmin(admin.ModelAdmin):
     search_fields = ('name', 'external_id')
 
 admin.site.register(LevelLogBase)
+admin.site.register(RepurchaseCycle)
+admin.site.register(ProductCategory)
+admin.site.register(RetailProduct)
+admin.site.register(PurchaseBase)
+admin.site.register(OrderProduct)

@@ -16,7 +16,7 @@ from filtration.conditions import DateRangeCondition, ModeCondition
 from orderly_core.team.charts import client_behavior_charts
 from cerem.tasks import clickhouse_client
 from cerem.utils import F
-from orderly_core.team.charts import overview_charts, AttributionPieChart, past_charts
+from orderly_core.team.charts import overview_charts, AttributionPieChart, past_charts, trend_charts
 from charts.drawers import MatrixChart
 from charts.registries import chart_category, dashboard_preset
 from .models import EventBase, LevelLogBase, EventLogBase, EventBase, MemberLevelBase
@@ -236,12 +236,117 @@ class LevelClientCountTracing(BarChart):
 
             self.create_label(name=name, data=data, notes=notes)
 
+@trend_charts.chart(name='等級人數折線圖')
+class MemberLevelTrend(LineChart):
+    def __init__(self):
+        super().__init__()
+        now = timezone.now()
+        self.add_options(time_range=DateRangeCondition('時間範圍').default(
+            (
+                (now - datetime.timedelta(days=365)).isoformat(),
+                now.isoformat()
+            )
+        ))
+    def get_per_date_list(self, start_date, end_date):
+        date_list = []
+        delta = end_date - start_date
+        for i in range(delta.days + 1):
+            date_list.append(start_date + datetime.timedelta(days=i))
+        return date_list
+
+    def draw(self):
+        client_qs = self.team.clientbase_set.filter(removed=False)
+        date_start, date_end = self.get_date_range('time_range')
+        date_list = self.get_per_date_list(date_start, date_end)
+        self.set_date_range(date_start, date_end)
+        self.set_total(len(client_qs))
+        levels = MemberLevelBase.objects.filter(removed=False).order_by('rank').values_list('id', 'name')
+        for level_id, name in levels:
+            data = []
+            for date in date_list:
+                qs = client_qs.annotate(
+                    current_level_id=Subquery(
+                        LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__lt=date).order_by('-from_datetime').values('to_level_id')[:1]
+                    )
+                )
+                clients = qs.filter(current_level_id=level_id)
+                data.append(clients.count())
+
+            self.notes.update({
+                'tooltip_value': f'{name}會員人數<br>{{data}} 人',
+                'tooltip_name': ' '
+            })
+
+            self.create_label(name=name, data=data, notes=self.notes)
+
+@trend_charts.chart(name='等級即將到期趨勢折線圖')
+class FutureLevelDueTrend(LineChart):
+    def __init__(self):
+        super().__init__()
+        now = timezone.now()
+        self.add_options(
+            time_range=DateRangeCondition('時間範圍')
+            .config(max_date=(now + datetime.timedelta(days=365)).isoformat())
+            .default(
+                (
+                    now.isoformat(),
+                    (now + datetime.timedelta(days=365)).isoformat()
+                )
+            )
+        )
+    def get_month_count(self, date_start, date_end):
+        year_begin, year_end = date_start.year, date_end.year
+        month_begin, month_end = date_start.month, date_end.month
+        if year_begin == year_end:
+            months = month_end - month_begin
+        else:
+            months = (year_end - year_begin) * 12 + month_end - month_begin
+
+        return months
+
+    def draw(self):
+        now = timezone.now()
+        client_qs = self.team.clientbase_set.filter(removed=False)
+        date_start, date_end = self.get_date_range('time_range')
+
+        client_qs = client_qs.annotate(
+            current_level_due=Subquery(
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_datetime')[:1]
+            ),
+            current_level_id=Subquery(
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level_id')[:1]
+            )
+        )
+
+        levels = MemberLevelBase.objects.filter(removed=False).values_list('id', 'name')
+        for level_id, name in levels:
+            labels = []
+            data = []
+            month_count = self.get_month_count(date_start, date_end)
+            for i in range(month_count+1):
+                month_start = date_start + relativedelta(months=i)
+                month_end = month_start + relativedelta(months=1)
+                labels.append(month_start.strftime('%Y/%m'))
+                clients = client_qs.filter(current_level_id=level_id, current_level_due__range=[month_start, month_end])
+                data.append(clients.count())
+            self.set_labels(labels)
+            notes = {
+                'tooltip_value': '{name}: {data} 人',
+                'tooltip_name': ' '
+            }
+
+            self.create_label(name=name, data=data, notes=notes)
+
+
+
 @dashboard_preset
 class Levels:
     name = '等級模組'
     charts = [
         MemberLevelPieChart.preset('等級人數圓餅圖'),
-        #LevelUpMatrMatrix.preset('等級升降熱區圖'),
+        #LevelUpMatrMatrix.preset('等級升降續熱區圖'),
         FutureLevelDue.preset('等級即將到期直條圖', width='full'),
-        LevelClientCountTracing.preset('等級人數往期直條圖')
+        LevelClientCountTracing.preset('等級人數往期直條圖'),
+        MemberLevelTrend.preset('等級人數折線圖', width='full'),
+        FutureLevelDueTrend.preset('等級即將到期趨勢折線圖', width='full')
     ]
