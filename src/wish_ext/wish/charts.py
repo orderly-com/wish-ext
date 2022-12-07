@@ -2,17 +2,18 @@ import datetime
 import itertools
 import statistics
 from dateutil.relativedelta import relativedelta
+import math
 
 from django.utils import timezone
 from django.db.models.functions import TruncDate, ExtractMonth, ExtractYear, Cast
-from django.db.models import Count, Func, Max, Min, IntegerField, Sum
+from django.db.models import Count, Func, Max, Min, IntegerField, Sum, Avg
 from django.db.models.expressions import OuterRef, Subquery
 
 from charts.exceptions import NoData
 from charts.registries import chart_category
 from charts.drawers import PieChart, BarChart, LineChart, HorizontalBarChart, DataCard
 
-from filtration.conditions import DateRangeCondition, ModeCondition
+from filtration.conditions import DateRangeCondition, ModeCondition, SingleSelectCondition
 from orderly_core.team.charts import client_behavior_charts
 from cerem.tasks import clickhouse_client
 from cerem.utils import F
@@ -382,8 +383,9 @@ class PurchaseMemberCount(BarChart):
 
 @past_charts.chart(name='交易金額往期直條圖')
 class PurchaseNumberCount(BarChart):
-    ACCUMULATED = 'all'
-    ADDED = 'member'
+    TURNOVER = 'turnover'
+    PERCUSPRICE = 'per_cus_price'
+    AVGPRICE = 'avg_price'
     '''
     Hidden options:
         -trace_days:
@@ -395,13 +397,46 @@ class PurchaseNumberCount(BarChart):
         super().__init__()
         self.trace_days = [365, 30, 7, 1]
         self.add_options(
-            #join_time_range=DateRangeCondition('時間範圍'),
-            mode=ModeCondition('').choice(
-                {'text': '營業額', 'id': self.ADDED},
-                {'text': '客單價', 'id': self.ACCUMULATED},
-                {'text': '平均金額', 'id': self.ACCUMULATED}
-            ).default(self.ACCUMULATED)
+            select_option=ModeCondition('').choice(
+                {'id': self.TURNOVER, 'text': '營業額'},
+                {'id': self.PERCUSPRICE, 'text': '客單價'},
+                {'id': self.AVGPRICE, 'text': '平均金額'},
+            ).default(self.TURNOVER)
         )
+
+    def get_total_price_sum(self, query_set, date):
+        return query_set.aggregate(Sum('total_price'))
+
+    def filter_date(self, query_set, date):
+        return query_set.filter(removed='False').filter(datetime__lt=date)
+
+    def get_turnover_data(self, query_set, date):
+        qs_result_dict =  query_set.filter(datetime__lt=date).aggregate(Sum('total_price'))
+        return qs_result_dict.get('total_price__sum', 0)
+
+    def get_avg_price_data(self, query_set, date):
+        turn_over = self.get_turnover_data(query_set, date)
+        order_count = query_set.filter(datetime__lt=date).count()
+        if order_count:
+            return math.ceil(turn_over / order_count)
+        else:
+            return 0
+
+    def get_per_cus_price_data(self, query_set, date):
+        turn_over = self.get_turnover_data(query_set, date)
+        member_count = query_set.values('clientbase_id').distinct().filter(datetime__lt=date).count()
+        if member_count:
+            return math.ceil(turn_over / member_count)
+        else:
+            return 0
+
+    def get_data_router(self, option, query_set, date):
+        if option == self.TURNOVER:
+            return self.get_turnover_data(query_set, date)
+        elif option == self.AVGPRICE:
+            return self.get_avg_price_data(query_set, date)
+        elif option == self.PERCUSPRICE:
+            return self.get_per_cus_price_data(query_set, date)
 
     def get_labels(self):
         labels = []
@@ -418,23 +453,20 @@ class PurchaseNumberCount(BarChart):
         return labels
 
     def draw(self):
+        select_option = self.options.get('select_option', '未設定')
         self.trace_days = self.options.get('trace_days', self.trace_days)
         data = []
         now = timezone.now()
-        # purchase_base_set = PurchaseBase.objects.filter(removed=False)
-        #total_price = purchase_base_set.aggregate(Sum('total_price'))
-        #print('total_price: ', total_price)
-        #self.set_total(total_price['total_price__sum'])
+        purchase_base_set = PurchaseBase.objects.filter(removed=False)
         for days in self.trace_days:
             date = now - datetime.timedelta(days=days)
-            purchase_base_set = PurchaseBase.filter(removed=False).filter(datetime__lt=date)
-            prices = purchase_base_set.values()
-            data.append(prices)
+            result = self.get_data_router(select_option, purchase_base_set, date)
+            data.append(result)
         notes = {
-            'tooltip_value': f'{{data}} 人'
+            'tooltip_value': '{data} 元'
         }
 
-        self.create_label(name=' ', data=data, notes=notes)
+        self.create_label(name='', data=data, notes=notes)
 
 @past_charts.chart(name='交易單數往期直條圖')
 class PurchaseOrderCount(BarChart):
@@ -499,7 +531,7 @@ class Purchae:
     name = '交易模組'
     charts = [
         PurchaseMemberCount.preset('交易人數往期直條圖', chart_type='bar'),
-        #PurchaseNumberCount.preset('交易金額往期直條圖', chart_type='bar'),
+        PurchaseNumberCount.preset('交易金額往期直條圖', chart_type='bar'),
         PurchaseOrderCount.preset('交易單數往期直條圖', chart_type='bar'),
 
     ]
