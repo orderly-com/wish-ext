@@ -13,7 +13,7 @@ from charts.exceptions import NoData
 from charts.registries import chart_category
 from charts.drawers import PieChart, BarChart, LineChart, HorizontalBarChart, DataCard
 
-from filtration.conditions import DateRangeCondition, ModeCondition, SingleSelectCondition, ChoiceCondition, SelectCondition, Condition
+from filtration.conditions import DateRangeCondition, ModeCondition, SingleSelectCondition, ChoiceCondition, SelectCondition, Condition, DropDownCondition
 from orderly_core.team.charts import client_behavior_charts
 from cerem.tasks import clickhouse_client
 from cerem.utils import F
@@ -22,7 +22,7 @@ from charts.drawers import MatrixChart
 from charts.registries import chart_category, dashboard_preset
 from .models import EventBase, LevelLogBase, EventLogBase, EventBase, MemberLevelBase
 from wish_ext.retail.models import PurchaseBase
-from wish_ext.wish.models import Brand
+from wish_ext.wish.models import Brand, BrandAuth
 
 
 @overview_charts.chart(name='等級人數圓餅圖')
@@ -469,11 +469,8 @@ class PurchaseNumberCount(BarChart):
 
         self.create_label(name='', data=data, notes=notes)
 
-@past_charts.chart(name='交易金額往期直條圖')
-class PurchaseNumberCount(BarChart):
-    TURNOVER = 'turnover'
-    PERCUSPRICE = 'per_cus_price'
-    AVGPRICE = 'avg_price'
+@past_charts.chart(name='交易單數往期直條圖')
+class PurchaseOrderCount(BarChart):
     '''
     Hidden options:
         -trace_days:
@@ -484,47 +481,6 @@ class PurchaseNumberCount(BarChart):
     def __init__(self):
         super().__init__()
         self.trace_days = [365, 30, 7, 1]
-        self.add_options(
-            select_option=ModeCondition('').choice(
-                {'id': self.TURNOVER, 'text': '營業額'},
-                {'id': self.PERCUSPRICE, 'text': '客單價'},
-                {'id': self.AVGPRICE, 'text': '平均金額'},
-            ).default(self.TURNOVER)
-        )
-
-    def get_total_price_sum(self, query_set, date):
-        return query_set.aggregate(Sum('total_price'))
-
-    def filter_date(self, query_set, date):
-        return query_set.filter(removed='False').filter(datetime__lt=date)
-
-    def get_turnover_data(self, query_set, date):
-        qs_result_dict =  query_set.filter(datetime__lt=date).aggregate(Sum('total_price'))
-        return qs_result_dict.get('total_price__sum', 0)
-
-    def get_avg_price_data(self, query_set, date):
-        turn_over = self.get_turnover_data(query_set, date)
-        order_count = query_set.filter(datetime__lt=date).count()
-        if order_count:
-            return math.ceil(turn_over / order_count)
-        else:
-            return 0
-
-    def get_per_cus_price_data(self, query_set, date):
-        turn_over = self.get_turnover_data(query_set, date)
-        member_count = query_set.values('clientbase_id').distinct().filter(datetime__lt=date).count()
-        if member_count:
-            return math.ceil(turn_over / member_count)
-        else:
-            return 0
-
-    def get_data_router(self, option, query_set, date):
-        if option == self.TURNOVER:
-            return self.get_turnover_data(query_set, date)
-        elif option == self.AVGPRICE:
-            return self.get_avg_price_data(query_set, date)
-        elif option == self.PERCUSPRICE:
-            return self.get_per_cus_price_data(query_set, date)
 
     def get_labels(self):
         labels = []
@@ -541,20 +497,20 @@ class PurchaseNumberCount(BarChart):
         return labels
 
     def draw(self):
-        select_option = self.options.get('select_option', '未設定')
         self.trace_days = self.options.get('trace_days', self.trace_days)
         data = []
         now = timezone.now()
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        self.set_total(len(purchase_base_set))
         for days in self.trace_days:
             date = now - datetime.timedelta(days=days)
-            result = self.get_data_router(select_option, purchase_base_set, date)
-            data.append(result)
+            purchase_base = purchase_base_set.filter(datetime__lt=date)
+            data.append(purchase_base.count())
         notes = {
-            'tooltip_value': '{data} 元'
+            'tooltip_value': f'{{data}} 人'
         }
 
-        self.create_label(name='', data=data, notes=notes)
+        self.create_label(name=' ', data=data, notes=notes)
 
 
 @trend_charts.chart(name='交易金額折線圖(集團)')
@@ -565,10 +521,6 @@ class PurchasePriceTrend(LineChart):
     def __init__(self):
         super().__init__()
         now = timezone.now()
-        # self.brand_selection = SingleSelectCondition('全部品牌')
-        brands = self.get_brand_data()
-        # for brand in brands:
-        #     self.brand_selection.choice(brand)
         self.add_options(time_range=DateRangeCondition('時間範圍').default(
             (
                 (now - datetime.timedelta(days=90)).isoformat(),
@@ -578,35 +530,45 @@ class PurchasePriceTrend(LineChart):
                 {'id': self.TURNOVER, 'text': '營業額'},
                 {'id': self.PERCUSPRICE, 'text': '客單價'},
                 {'id': self.AVGPRICE, 'text': '平均金額'},
-            ).default(self.TURNOVER),
+            ).default(self.TURNOVER)
         )
 
 
-    # def init_user(self):
-    #     authedbrand_ids = []
-    #     brand_selection = SingleSelectCondition('全部品牌')
-        # print()
+    def init_user(self):
+        authedbrand_ids = []
+        brand_selection = DropDownCondition('全部品牌')
 
-        # user_brandauth = self.user.brandauth_set.values('brand_id')
-        # brands = self.get_brand_data()
-        # for brand in brands:
-        #     self.brand_selection.choice(brand)
+        authed_brand_ids = self.get_teamauth_brand_ids()
 
-        # for brandauth in user_brandauth:
-        #     authedbrand_ids.append(brandauth['brand_id'])
+        brands = self.get_brand_data(authed_brand_ids)
 
-        # if len(authedbrand_ids) > 1:
-        #     self.add_options(all_brand=brand_selection)
+        if len(brands) == Brand.objects.filter(removed='False').count():
+            brands.append({'id': 'all', 'text': '全部品牌'})
+        if not brands:
+             brand_selection.choice(*brands).default('no brand')
+        else:
+            brand_selection.choice(*brands).default(brands[0]['id'])
 
-    def get_brand_data(self):
+        self.add_options(all_brand=brand_selection)
+
+
+    def get_teamauth_brand_ids(self):
+        teamauth = self.user.teamauth_set.filter(team=self.team).first()
+        if teamauth is None:
+            return []
+        enabled_brand_auths = teamauth.brandauth_set.filter(enabled=True)
+        authed_brand_ids = enabled_brand_auths.values_list('brand_id', flat=True).values('brand_id')
+        return authed_brand_ids
+
+
+    def get_brand_data(self, authed_brand_ids):
         brand_data = []
-        brand_set = Brand.objects.all().values('id','name')
-        if brand_set:
-            for item in brand_set:
-                id_name_map = {}
-                id_name_map['id'] = item['id']
-                id_name_map['text'] = item['name']
-                brand_data.append(id_name_map)
+        brand_set = Brand.objects.filter(removed='False').filter(id__in=authed_brand_ids).values('id','name')
+        for item in brand_set:
+            id_name_map = {}
+            id_name_map['id'] = item['id']
+            id_name_map['text'] = item['name']
+            brand_data.append(id_name_map)
         return brand_data
 
     def get_per_date_list(self, start_date, end_date):
@@ -646,15 +608,22 @@ class PurchasePriceTrend(LineChart):
             return self.get_avg_price_data(query_set, date)
         elif option == self.PERCUSPRICE:
             return self.get_per_cus_price_data(query_set, date)
+    
+    def explain_y(self):
+        return '金額'
 
 
     def draw(self):
         # brand option selection
         select_brand_id = self.options.get('all_brand')
-        if select_brand_id:
+        teamauth_brands = self.get_teamauth_brand_ids()
+        teamauth_brands = [brand['brand_id'] for brand in teamauth_brands]
+        if select_brand_id is None:
+            purchase_base_qs = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
+        elif select_brand_id != 'all':
             purchase_base_qs = PurchaseBase.objects.filter(removed=False).filter(brand=select_brand_id)
         else:
-            purchase_base_qs = PurchaseBase.objects.filter(removed=False)
+            purchase_base_qs = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
         date_start, date_end = self.get_date_range('time_range')
         date_list = self.get_per_date_list(date_start, date_end)
         self.set_date_range(date_start, date_end)
@@ -682,15 +651,65 @@ class PurchaseMemberTrend(LineChart):
                 now.isoformat()
             )
         ))
+    def init_user(self):
+        authedbrand_ids = []
+        brand_selection = DropDownCondition('品牌')
+
+        authed_brand_ids = self.get_teamauth_brand_ids()
+
+
+        brands = self.get_brand_data(authed_brand_ids)
+
+        if len(brands) == Brand.objects.filter(removed='False').count():
+            brands.append({'id': 'all', 'text': '全部品牌'})
+        if not brands:
+             brand_selection.choice(*brands).default('no brand')
+        else:
+            brand_selection.choice(*brands).default(brands[0]['id'])
+
+
+        self.add_options(all_brand=brand_selection)
+
+
+    def get_teamauth_brand_ids(self):
+        teamauth = self.user.teamauth_set.filter(team=self.team).first()
+        if teamauth is None:
+            return []
+        enabled_brand_auths = teamauth.brandauth_set.filter(enabled=True)
+        authed_brand_ids = enabled_brand_auths.values_list('brand_id', flat=True).values('brand_id')
+        return authed_brand_ids
+
+
+    def get_brand_data(self, authed_brand_ids):
+        brand_data = []
+        brand_set = Brand.objects.filter(removed='False').filter(id__in=authed_brand_ids).values('id','name')
+        for item in brand_set:
+            id_name_map = {}
+            id_name_map['id'] = item['id']
+            id_name_map['text'] = item['name']
+            brand_data.append(id_name_map)
+        return brand_data
+
     def get_per_date_list(self, start_date, end_date):
         date_list = []
         delta = end_date - start_date
         for i in range(delta.days + 1):
             date_list.append(start_date + datetime.timedelta(days=i))
         return date_list
+    
+    def explain_y(self):
+        return '人數'
 
     def draw(self):
-        purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        select_brand_id = self.options.get('all_brand')
+        teamauth_brands = self.get_teamauth_brand_ids()
+        teamauth_brands = [brand['brand_id'] for brand in teamauth_brands]
+        if select_brand_id is None:
+            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
+        elif select_brand_id != 'all':
+            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand=select_brand_id)
+        else:
+            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
         date_start, date_end = self.get_date_range('time_range')
         date_list = self.get_per_date_list(date_start, date_end)
         self.set_date_range(date_start, date_end)
@@ -718,6 +737,44 @@ class PurchaseOrderTrend(LineChart):
                 now.isoformat()
             )
         ))
+    def init_user(self):
+        authedbrand_ids = []
+        brand_selection = DropDownCondition('品牌')
+
+        authed_brand_ids = self.get_teamauth_brand_ids()
+
+
+        brands = self.get_brand_data(authed_brand_ids)
+
+        if len(brands) == Brand.objects.filter(removed='False').count():
+            brands.append({'id': 'all', 'text': '全部品牌'})
+        if not brands:
+             brand_selection.choice(*brands).default('no brand')
+        else:
+            brand_selection.choice(*brands).default(brands[0]['id'])
+
+        self.add_options(all_brand=brand_selection)
+
+
+    def get_teamauth_brand_ids(self):
+        teamauth = self.user.teamauth_set.filter(team=self.team).first()
+        if teamauth is None:
+            return []
+        enabled_brand_auths = teamauth.brandauth_set.filter(enabled=True)
+        authed_brand_ids = enabled_brand_auths.values_list('brand_id', flat=True).values('brand_id')
+        return authed_brand_ids
+
+
+    def get_brand_data(self, authed_brand_ids):
+        brand_data = []
+        brand_set = Brand.objects.filter(removed='False').filter(id__in=authed_brand_ids).values('id','name')
+        for item in brand_set:
+            id_name_map = {}
+            id_name_map['id'] = item['id']
+            id_name_map['text'] = item['name']
+            brand_data.append(id_name_map)
+        return brand_data
+
     def get_per_date_list(self, start_date, end_date):
         date_list = []
         delta = end_date - start_date
@@ -725,8 +782,19 @@ class PurchaseOrderTrend(LineChart):
             date_list.append(start_date + datetime.timedelta(days=i))
         return date_list
 
+    def explain_y(self):
+        return '單數'
+
     def draw(self):
-        purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        select_brand_id = self.options.get('all_brand')
+        teamauth_brands = self.get_teamauth_brand_ids()
+        teamauth_brands = [brand['brand_id'] for brand in teamauth_brands]
+        if select_brand_id is None:
+            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
+        elif select_brand_id != 'all':
+            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand=select_brand_id)
+        else:
+            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
         date_start, date_end = self.get_date_range('time_range')
         date_list = self.get_per_date_list(date_start, date_end)
         self.set_date_range(date_start, date_end)
@@ -759,7 +827,7 @@ class Levels:
     ]
 
 @dashboard_preset
-class Purchae:
+class Purchase:
     name = '交易模組'
     charts = [
         PurchaseMemberCount.preset('交易人數往期直條圖', chart_type='bar'),

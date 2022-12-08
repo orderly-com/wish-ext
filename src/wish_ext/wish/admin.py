@@ -12,7 +12,7 @@ from ..retail.models import RepurchaseCycle, ProductCategory, RetailProduct, Pur
 
 
 from .models import (
-    Brand, MemberLevelBase, LevelLogBase
+    Brand, MemberLevelBase, LevelLogBase, BrandAuth
 )
 
 
@@ -49,3 +49,4 @@ admin.site.register(ProductCategory)
 admin.site.register(RetailProduct)
 admin.site.register(PurchaseBase)
 admin.site.register(OrderProduct)
+admin.site.register(BrandAuth)
