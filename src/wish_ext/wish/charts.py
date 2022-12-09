@@ -1,3 +1,4 @@
+from collections import defaultdict
 import datetime
 import itertools
 import statistics
@@ -236,7 +237,7 @@ class LevelClientCountTracing(BarChart):
                 'tooltip_value': f'{name}會員人數<br>{{data}} 人',
                 'tooltip_name': ' '
             }
-
+            print('data_memeber: ', data)
             self.create_label(name=name, data=data, notes=notes)
 
 @trend_charts.chart(name='等級人數折線圖')
@@ -339,6 +340,141 @@ class FutureLevelDueTrend(LineChart):
             }
 
             self.create_label(name=name, data=data, notes=notes)
+
+@overview_charts.chart(name='營業額')
+class TurnOverCard(DataCard):
+    def draw(self):
+        purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        qs_result_dict =  purchase_base_set.aggregate(Sum('total_price'))
+        turnover = qs_result_dict.get('total_price__sum', 0)
+        if turnover is None:
+            turnover = 0
+        self.set_data(math.ceil(turnover), postfix='元')
+
+@overview_charts.chart(name='會員交易人數')
+class PurchaseMemberCard(DataCard):
+    def draw(self):
+        purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        member_count = purchase_base_set.values('clientbase_id').distinct().count()
+        self.set_data(member_count, postfix='人')
+
+@overview_charts.chart(name='會員交易率')
+class PurchaseMemberRateCard(DataCard):
+    def draw(self):
+        purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        purchase_member_count = purchase_base_set.values('clientbase_id').distinct().count()
+        clients_count = self.team.clientbase_set.filter(removed=False).count()
+        result = (purchase_member_count / clients_count) * 100
+        self.set_data('%.1f'%result, postfix='%')
+
+@overview_charts.chart(name='交易筆數')
+class PurchaseCountCard(DataCard):
+    def draw(self):
+        purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        purchase_count = purchase_base_set.count()
+        self.set_data(purchase_count, postfix='筆')
+
+@overview_charts.chart(name='平均金額')
+class AvgPriceCard(DataCard):
+    def draw(self):
+        purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        qs_result_dict =  purchase_base_set.aggregate(Sum('total_price'))
+        turnover = qs_result_dict.get('total_price__sum', 0)
+        if turnover is None:
+            turnover = 0
+        purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        purchase_count = purchase_base_set.count()
+        if not turnover:
+            result = 0
+        else:
+            result = math.ceil(turnover / purchase_count)
+        self.set_data(result, postfix='元')
+
+@overview_charts.chart(name='客單價')
+class AvgPerMemberCard(DataCard):
+    def draw(self):
+        purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        qs_result_dict =  purchase_base_set.aggregate(Sum('total_price'))
+        turnover = qs_result_dict.get('total_price__sum', 0)
+        if turnover is None:
+            turnover = 0
+        member_count = purchase_base_set.values('clientbase_id').distinct().count()
+        if not turnover:
+            result = 0
+        else:
+            result = math.ceil(turnover / member_count)
+        self.set_data(result, postfix='元')
+
+
+@overview_charts.chart(name='交易客單價區間單數直條圖')
+class AvgPerMemberRange(BarChart):
+    def explain_y(self):
+        return '單數'
+
+    def get_labels(self):
+        step = self.options.get('step', 1000)
+        minimum = self.options.get('min', 999)
+        maximum = self.options.get('max', 20000)
+
+        labels = []
+        labels.append(f'< {minimum}')
+        while minimum < maximum:
+            labels.append(f'{minimum} - {minimum + step}')
+            minimum += step
+
+        labels.append(f'> {maximum}')
+        return labels
+
+    def draw(self):
+        now = timezone.now()
+        step = self.options.get('step', 999)
+        minimum = self.options.get('min', 999)
+        maximum = self.options.get('max', 20000)
+
+        labels = []
+        tooltip_titles = []
+        labels.append(f'<= {minimum}')
+        tooltip_titles.append(f'<= {minimum}')
+        minimum += 1
+        while minimum < maximum:
+            labels.append(f'{minimum} - {minimum + step}')
+            tooltip_titles.append(f'{minimum} - {minimum + step}')
+            minimum += 1
+            minimum += step
+
+        labels.append(f'>= {maximum}')
+        tooltip_titles.append(f'>= {maximum}')
+        self.set_labels(labels)
+
+        def get_bin_index(price):
+            if price < 0:
+                return 0
+            if price >= maximum:
+                return -1
+            index = int((price - minimum) / step)
+
+            return index
+
+        purchase_set = PurchaseBase.objects.filter(removed=False)
+        if not purchase_set.exists():
+            raise NoData('尚無資料')
+        self.set_total(len(purchase_set))
+        step = self.options.get('step', 1000)
+        minimum = self.options.get('min', 999)
+        maximum = self.options.get('max', 20000)
+        data = [0] * int((maximum-minimum) / step + 1)
+        per_purchase_set = purchase_set.all().values('total_price').annotate(count=Count('id'))
+        for per_data in per_purchase_set:
+            index = get_bin_index(per_data['total_price'])
+            data[index] += per_data['count']
+
+        notes = {
+            'tooltip_title': tooltip_titles,
+            'tooltip_name': ' ',
+            'tooltip_value': '{data} 筆',
+        }
+        self.create_label(name='', data=data, notes=notes)
+
 @past_charts.chart(name='交易人數往期直條圖')
 class PurchaseMemberCount(BarChart):
     '''
@@ -351,6 +487,9 @@ class PurchaseMemberCount(BarChart):
     def __init__(self):
         super().__init__()
         self.trace_days = [365, 30, 7, 1]
+
+    def explain_y(self):
+        return '人數'
 
     def get_labels(self):
         labels = []
@@ -404,6 +543,9 @@ class PurchaseNumberCount(BarChart):
                 {'id': self.AVGPRICE, 'text': '平均金額'},
             ).default(self.TURNOVER)
         )
+
+    def explain_y(self):
+        return '金額'
 
     def get_total_price_sum(self, query_set, date):
         return query_set.aggregate(Sum('total_price'))
@@ -482,6 +624,9 @@ class PurchaseOrderCount(BarChart):
         super().__init__()
         self.trace_days = [365, 30, 7, 1]
 
+    def explain_y(self):
+        return '單數'
+
     def get_labels(self):
         labels = []
         for days in self.trace_days:
@@ -511,6 +656,91 @@ class PurchaseOrderCount(BarChart):
         }
 
         self.create_label(name=' ', data=data, notes=notes)
+
+@past_charts.chart(name='NESL往期直條圖')
+class NESLCount(BarChart):
+    '''
+    Hidden options:
+        -trace_days:
+            format: []
+            default: [365, 30, 7, 1]
+            explain: determine datetime points of x-axis.
+    '''
+    def __init__(self):
+        super().__init__()
+        self.trace_days = [365, 30, 7, 1]
+
+    def explain_y(self):
+        return '人數'
+
+    def get_labels(self):
+        labels = []
+        for days in self.trace_days:
+            labels.append(f'{days} 天前')
+        return labels
+
+    def get_labels_info(self):
+        labels = []
+        for days in self.trace_days:
+            now = timezone.now()
+            date_string = (now - datetime.timedelta(days=days)).strftime('%Y 年 %m 月 %d 日')
+            labels.append(f'{date_string} ~ {date_string}')
+        return labels
+
+    def draw(self):
+        self.trace_days = self.options.get('trace_days', self.trace_days)
+        now = timezone.now()
+        client_qs = self.team.clientbase_set.filter(removed=False)
+        self.set_total(len(client_qs))
+        levels = ['N','E','S','L']
+        for level in levels:
+            data = []
+            for days in self.trace_days:
+                date = now - datetime.timedelta(days=days)
+                date_range_in_ne_group = [(date - datetime.timedelta(days=90)), date]
+                date_range_in_sl_group = [(date - datetime.timedelta(days=365)), date - datetime.timedelta(days=120)]
+                purchase_set = PurchaseBase.objects.filter(removed=False)
+                # get NE group data in range
+                purchasebase_ne_group=purchase_set.filter(datetime__lte=date_range_in_ne_group[1], datetime__gte=date_range_in_ne_group[0])
+                # get SL group data in range
+                purchasebase_sl_group=purchase_set.filter(datetime__lte=date_range_in_sl_group[1], datetime__gte=date_range_in_sl_group[0])
+                # get all NE group clients id
+                purchasebase_ne_group_cli_id = purchasebase_ne_group.values_list('clientbase_id',flat=True)
+                # get all SL group
+                purchasebase_sl_group_cli_id = purchasebase_sl_group.values_list('clientbase_id',flat=True)
+                # get real NE data(exclude SL data)
+                ne_group_id = purchasebase_ne_group_cli_id.exclude(clientbase_id__in=list(purchasebase_sl_group_cli_id))
+                # get real SL data(exclude NE data)
+                sl_group_id = purchasebase_sl_group_cli_id.exclude(clientbase_id__in=list(purchasebase_ne_group_cli_id))
+                # get NE count data
+                ne_group_count = ne_group_id.annotate(Count('clientbase_id')).values('clientbase_id','clientbase_id__count')
+                # get SL count data
+                sl_group_count = sl_group_id.annotate(Count('clientbase_id')).values('clientbase_id','clientbase_id__count')
+                # S count
+                s_count = sl_group_count.filter(clientbase_id__count=1).count()
+                # L count
+                l_count = sl_group_count.exclude(clientbase_id__count=1).count()
+                # N count
+                n_count = ne_group_count.filter(clientbase_id__count=1).count()
+                # E count
+                e_count = ne_group_count.exclude(clientbase_id__count=1).count()
+
+                # jugde data
+                if level == 'N':
+                    data.append(n_count)
+                elif level == 'E':
+                    data.append(e_count)
+                elif level == 'S':
+                    data.append(s_count)
+                else:
+                    data.append(l_count)
+            notes = {
+                # 'tooltip_title': data,
+                'tooltip_value': '{data} 人',
+                'tooltip_name': ' '
+            }
+            print('data: ', data)
+            self.create_label(name=level, data=data, notes=notes)
 
 
 @trend_charts.chart(name='交易金額折線圖(集團)')
@@ -551,6 +781,8 @@ class PurchasePriceTrend(LineChart):
 
         self.add_options(all_brand=brand_selection)
 
+    def explain_y(self):
+        return '金額'
 
     def get_teamauth_brand_ids(self):
         teamauth = self.user.teamauth_set.filter(team=self.team).first()
@@ -608,7 +840,7 @@ class PurchasePriceTrend(LineChart):
             return self.get_avg_price_data(query_set, date)
         elif option == self.PERCUSPRICE:
             return self.get_per_cus_price_data(query_set, date)
-    
+
     def explain_y(self):
         return '金額'
 
@@ -696,7 +928,7 @@ class PurchaseMemberTrend(LineChart):
         for i in range(delta.days + 1):
             date_list.append(start_date + datetime.timedelta(days=i))
         return date_list
-    
+
     def explain_y(self):
         return '人數'
 
@@ -830,9 +1062,17 @@ class Levels:
 class Purchase:
     name = '交易模組'
     charts = [
+        TurnOverCard.preset('營業額'),
+        PurchaseMemberCard.preset('會員交易人數'),
+        PurchaseMemberRateCard.preset('會員交易率'),
+        PurchaseCountCard.preset('交易筆數'),
+        AvgPriceCard.preset('平均金額'),
+        AvgPerMemberCard.preset('單價'),
+        AvgPerMemberRange.preset('交易客單價區間單數直條圖', width='full'),
         PurchaseMemberCount.preset('交易人數往期直條圖', chart_type='bar'),
         PurchaseNumberCount.preset('交易金額往期直條圖', chart_type='bar'),
         PurchaseOrderCount.preset('交易單數往期直條圖', chart_type='bar'),
+        NESLCount.preset('NESL往期直條圖', chart_type='bar'),
         PurchasePriceTrend.preset('交易金額折線圖(集團)', width='full'),
         PurchaseMemberTrend.preset('交易人數折線圖(集團)', width='full'),
         PurchaseOrderTrend.preset('交易單數折線圖(集團)', width='full')
