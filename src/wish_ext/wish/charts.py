@@ -585,13 +585,13 @@ class PurchaseNumberBar(BarChart):
         select_brand_id = self.options.get('all_brand')
         teamauth_brands = self.get_teamauth_brand_ids()
         teamauth_brands = [brand['brand_id'] for brand in teamauth_brands]
-        if select_brand_id is None:
-            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
-        elif select_brand_id != 'all':
-            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand=select_brand_id)
-        else:
-            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
         date_start, date_end = self.get_date_range('time_range')
+        if select_brand_id is None:
+            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).filter(datetime__lte=date_end, datetime__gte=date_start)
+        elif select_brand_id != 'all':
+            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand=select_brand_id).filter(datetime__lte=date_end, datetime__gte=date_start)
+        else:
+            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).filter(datetime__lte=date_end, datetime__gte=date_start)
         months_difference = rrule.rrule(rrule.MONTHLY, dtstart = date_start, until = date_end).count()
         labels = []
         dates_list = []
@@ -687,14 +687,13 @@ class PurchaseMemCountBar(BarChart):
         select_brand_id = self.options.get('all_brand')
         teamauth_brands = self.get_teamauth_brand_ids()
         teamauth_brands = [brand['brand_id'] for brand in teamauth_brands]
-        if select_brand_id is None:
-            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
-        elif select_brand_id != 'all':
-            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand=select_brand_id)
-        else:
-            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
         date_start, date_end = self.get_date_range('time_range')
-        # count for month difference
+        if select_brand_id is None:
+            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).filter(datetime__lte=date_end, datetime__gte=date_start)
+        elif select_brand_id != 'all':
+            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand=select_brand_id).filter(datetime__lte=date_end, datetime__gte=date_start)
+        else:
+            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).filter(datetime__lte=date_end, datetime__gte=date_start)
         months_difference = rrule.rrule(rrule.MONTHLY, dtstart = date_start, until = date_end).count()
         labels = []
         dates_list = []
@@ -781,13 +780,13 @@ class PurchaseOrderBar(BarChart):
         select_brand_id = self.options.get('all_brand')
         teamauth_brands = self.get_teamauth_brand_ids()
         teamauth_brands = [brand['brand_id'] for brand in teamauth_brands]
-        if select_brand_id is None:
-            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
-        elif select_brand_id != 'all':
-            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand=select_brand_id)
-        else:
-            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
         date_start, date_end = self.get_date_range('time_range')
+        if select_brand_id is None:
+            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).filter(datetime__lte=date_end, datetime__gte=date_start)
+        elif select_brand_id != 'all':
+            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand=select_brand_id).filter(datetime__lte=date_end, datetime__gte=date_start)
+        else:
+            purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).filter(datetime__lte=date_end, datetime__gte=date_start)
         months_difference = rrule.rrule(rrule.MONTHLY, dtstart = date_start, until = date_end).count()
         labels = []
         dates_list = []
@@ -859,8 +858,6 @@ class RepurchaseMemCountBar(BarChart):
                     data[4] += 1
                 else:
                     data[5] += 1
-        print('dict_data: ', dict_data)
-        print('value_data: ', value_data)
 
         self.notes.update({
                 'tooltip_value': f'{{data}} 人<br> 佔會員比例: {{percentage}}%',
