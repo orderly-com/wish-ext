@@ -4,6 +4,7 @@ import itertools
 import statistics
 from dateutil.relativedelta import relativedelta
 import math
+import numpy as np
 
 from django.utils import timezone
 from django.db.models.functions import TruncDate, ExtractMonth, ExtractYear, Cast
@@ -409,6 +410,20 @@ class AvgPerMemberCard(DataCard):
 
 @overview_charts.chart(name='交易客單價區間單數直條圖')
 class AvgPerMemberRange(BarChart):
+    def __init__(self):
+        super().__init__()
+        now = timezone.now()
+        self.add_options(
+            time_range=DateRangeCondition('時間範圍')
+            .config(max_date=(now + datetime.timedelta(days=365)).isoformat())
+            .default(
+                (
+                    now.isoformat(),
+                    (now + datetime.timedelta(days=90)).isoformat()
+                )
+            )
+        )
+
     def explain_y(self):
         return '單數'
 
@@ -445,7 +460,6 @@ class AvgPerMemberRange(BarChart):
 
         labels.append(f'>= {maximum}')
         tooltip_titles.append(f'>= {maximum}')
-        print('labels: ', labels)
         self.set_labels(labels)
 
         def get_bin_index(price):
@@ -456,8 +470,9 @@ class AvgPerMemberRange(BarChart):
             index = int((price - minimum) / step)
 
             return index
+        date_start, date_end = self.get_date_range('time_range')
 
-        purchase_set = PurchaseBase.objects.filter(removed=False)
+        purchase_set = PurchaseBase.objects.filter(removed=False).filter(datetime__gte=date_start, datetime__lte=date_end)
         if not purchase_set.exists():
             raise NoData('尚無資料')
         self.set_total(len(purchase_set))
@@ -469,12 +484,11 @@ class AvgPerMemberRange(BarChart):
         for per_data in per_purchase_set:
             index = get_bin_index(per_data['total_price'])
             data[index] += per_data['count']
-        print('tooltip_titles: ', tooltip_titles)
 
         notes = {
             'tooltip_title': tooltip_titles,
             'tooltip_name': ' ',
-            'tooltip_value': '{data} 筆',
+            'tooltip_value': '{data} 筆單',
         }
         self.create_label(name='', data=data, notes=notes)
 
@@ -809,6 +823,65 @@ class PurchaseOrderBar(BarChart):
 
         self.create_label(data=data, notes=self.notes)
 
+@overview_charts.chart(name='RFM 人數直條圖')
+class RFMCountBar(BarChart):
+    def __init__(self):
+        super().__init__()
+
+    def explain_x(self):
+        return '人數'
+
+    def explain_y(self):
+        return 'RFM分數'
+
+    def get_turnover_data(self, query_set):
+        qs_result_dict =  query_set.aggregate(Sum('total_price'))
+        result = 0
+        if qs_result_dict.get('total_price__sum'):
+            result = qs_result_dict.get('total_price__sum')
+        return result
+
+    def get_avg_price_data(self, query_set):
+        turn_over = self.get_turnover_data(query_set)
+        order_count = query_set.count()
+        if order_count:
+            return math.ceil(turn_over / order_count)
+        else:
+            return 0
+
+    def get_per_cus_price_data(self, query_set):
+        turn_over = self.get_turnover_data(query_set)
+        member_count = query_set.values('clientbase_id').filter(removed=False).distinct().count()
+        if member_count:
+            return math.ceil(turn_over / member_count)
+        else:
+            return 0
+
+    def get_labels(self):
+        return [num for num in range(1,16)]
+
+    def draw(self):
+        client_qs = self.team.clientbase_set.filter(removed=False)
+        self.set_total(client_qs.count())
+        rfm_total_qs = client_qs.all().values('id','rfm_total_score')
+        data = [0] * 15
+        labels = [num for num in range(1,16)]
+        tooltip_title = []
+        for label in labels:
+            label_str = '分數 ' + f'{label}'
+            tooltip_title.append(label_str)
+        for rfm_data in rfm_total_qs:
+            if rfm_data['rfm_total_score'] != 0:
+                data[rfm_data['rfm_total_score']] += 1
+
+        self.notes.update({
+                'tooltip_title': tooltip_title,
+                'tooltip_value': '{data} 人<br> 佔會員比例: {percentage}%',
+                'tooltip_name': ' '
+            })
+
+        self.create_label(data=data, notes=self.notes)
+
 @overview_charts.chart(name='交易回購人數直條圖')
 class RepurchaseMemCountBar(BarChart):
     def __init__(self):
@@ -858,11 +931,76 @@ class RepurchaseMemCountBar(BarChart):
                     data[4] += 1
                 else:
                     data[5] += 1
+        self.set_total_data_count(len(order_member_count))
 
         self.notes.update({
                 'tooltip_value': f'{{data}} 人<br> 佔會員比例: {{percentage}}%',
                 'tooltip_name': ' '
             })
+
+        self.create_label(data=data, notes=self.notes)
+
+@overview_charts.chart(name='交易回購天數直條圖')
+class RepurchaseDayCountBar(BarChart):
+    def __init__(self):
+        super().__init__()
+        now = timezone.now()
+        self.add_options(time_range=DateRangeCondition('時間範圍').default(
+            (
+                (now - datetime.timedelta(days=90)).isoformat(),
+                now.isoformat()
+            )
+        ))
+
+    def get_labels(self):
+        return['第一次回購', '第二次回購', '第三次回購', '第四次回購', '大於四次回購']
+
+    def get_per_date_list(self, start_date, end_date):
+        date_list = []
+        delta = end_date - start_date
+        for i in range(delta.days + 1):
+            date_list.append(start_date + datetime.timedelta(days=i))
+        return date_list
+
+    def explain_y(self):
+        return '天數'
+
+    def explain_x(self):
+        return '回購頻率'
+
+    def draw(self):
+        purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        date_start, date_end = self.get_date_range('time_range')
+        self.set_total(len(purchase_base_set))
+        tooltip_titles = ['第一次回購', '第二次回購', '第三次回購', '第四次回購', '大於四次回購']
+        day_data = [0]*len(tooltip_titles)
+        data_member_count = [0] * len(tooltip_titles)
+        now = timezone.now()
+        per_data_count = {}
+        perchase_data = purchase_base_set.filter(datetime__lte=date_end, datetime__gte=date_start).values('clientbase_id','datetime')
+        for per_data in perchase_data:
+            per_data_count[per_data['clientbase_id']] = per_data_count.get(per_data['clientbase_id'], 0) + 1
+            if per_data_count.get(per_data['clientbase_id']) == 2:
+                day_data[0] += (now - per_data['datetime']).days
+                data_member_count[0] += 1
+            elif per_data_count.get(per_data['clientbase_id']) == 3:
+                day_data[1] += (now - per_data['datetime']).days
+                data_member_count[1] += 1
+            elif per_data_count.get(per_data['clientbase_id']) == 4:
+                day_data[2] += (now - per_data['datetime']).days
+                data_member_count[2] += 1
+            elif per_data_count.get(per_data['clientbase_id']) == 5:
+                day_data[3] += (now - per_data['datetime']).days
+                data_member_count[3] += 1
+            else:
+                day_data[4] += (now - per_data['datetime']).days
+                data_member_count[4] += 1
+        f_data_member_count = [1 for count in data_member_count if count == 0]
+        data = [ math.ceil(day / count) for day, count in zip(day_data, f_data_member_count)]
+        self.notes.update({
+            'tooltip_value': f'{{data}} 天 ',
+            'tooltip_name': ' '
+        })
 
         self.create_label(data=data, notes=self.notes)
 
@@ -1127,11 +1265,9 @@ class NESLCount(BarChart):
                 else:
                     data.append(l_count)
             notes = {
-                # 'tooltip_title': data,
                 'tooltip_value': '{data} 人',
                 'tooltip_name': ' '
             }
-            print('data: ', data)
             self.create_label(name=level, data=data, notes=notes)
 
 
@@ -1464,7 +1600,9 @@ class Purchase:
         PurchaseNumberBar.preset('交易金額直條圖(集團)', width='full'),
         PurchaseMemCountBar.preset('交易人數直條圖(集團)', width='full'),
         PurchaseOrderBar.preset('交易單數直條圖(集團)', width='full'),
+        RFMCountBar.preset('RFM 分數人數直條圖', width='full'),
         RepurchaseMemCountBar.preset('交易回購人數直條圖', width='full'),
+        RepurchaseDayCountBar.preset('交易回購天數直條圖', width='full'),
         PurchaseMemberCount.preset('交易人數往期直條圖', chart_type='bar'),
         PurchaseNumberCount.preset('交易金額往期直條圖', chart_type='bar'),
         PurchaseOrderCount.preset('交易單數往期直條圖', chart_type='bar'),
