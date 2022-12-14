@@ -931,7 +931,6 @@ class RepurchaseMemCountBar(BarChart):
                     data[4] += 1
                 else:
                     data[5] += 1
-        self.set_total_data_count(len(order_member_count))
 
         self.notes.update({
                 'tooltip_value': f'{{data}} 人<br> 佔會員比例: {{percentage}}%',
