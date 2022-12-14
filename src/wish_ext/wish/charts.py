@@ -21,7 +21,7 @@ from orderly_core.team.charts import client_behavior_charts
 from cerem.tasks import clickhouse_client
 from cerem.utils import F
 from orderly_core.team.charts import overview_charts, AttributionPieChart, past_charts, trend_charts
-from charts.drawers import MatrixChart
+from charts.drawers import MatrixChart, HeatMapChart
 from charts.registries import chart_category, dashboard_preset
 from .models import EventBase, LevelLogBase, EventLogBase, EventBase, MemberLevelBase
 from wish_ext.retail.models import PurchaseBase
@@ -406,6 +406,123 @@ class AvgPerMemberCard(DataCard):
         else:
             result = math.ceil(turnover / member_count)
         self.set_data(result, postfix='元')
+@overview_charts.chart(name='交易時間熱區圖')
+class PurchaseTimeHeatMap(HeatMapChart):
+    TURNOVER = 'turnover'
+    PERCUSPRICE = 'per_cus_price'
+    AVGPRICE = 'avg_price'
+    MEMBER_COUNT = 'member_count'
+    ORDER_COUNT = 'order_count'
+    def __init__(self):
+        super().__init__()
+        now = timezone.now()
+        self.x_values = ['1:00', '2:00', '3:00', '4:00','5:00','6:00', '7:00', '8:00', '9:00', '10:00', \
+            '11:00', '12:00','13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', \
+                '21:00','22:00', '23:00', '24:00']
+        self.y_values = ['週一', '週二', '週三', '週四', '週五', '週六', '週日']
+        self.add_options(time_range=DateRangeCondition('時間範圍').default(
+            (
+                (now - datetime.timedelta(days=90)).isoformat(),
+                now.isoformat()
+            )),
+            data_options=DropDownCondition('').choice(
+                {'id': self.PERCUSPRICE, 'text': '客單價'},
+                {'id': self.TURNOVER, 'text': '營業額'},
+                {'id': self.AVGPRICE, 'text': '平均金額'},
+                {'id': self.MEMBER_COUNT, 'text': '人數'},
+                {'id': self.ORDER_COUNT, 'text': '交易單數'}
+            ).default(self.PERCUSPRICE)
+        )
+
+    def get_per_date_list(self, start_date, end_date):
+        date_list = []
+        delta = end_date - start_date
+        for i in range(delta.days + 1):
+            date_list.append(start_date + datetime.timedelta(days=i))
+        return date_list
+
+    def explain_x(self):
+        return '最後一次消費天數'
+
+    def explain_y(self):
+        return '消費頻率'
+
+    def get_x_value(self, datetime):
+        hours = {'1:00': 1, '2:00':2, '3:00':3, '4:00':4,'5:00':5,'6:00':6, '7:00':7, '8:00':8, '9:00':9, '10:00':10, \
+            '11:00':11, '12:00':12,'13:00':13, '14:00':14, '15:00':15, '16:00':16, '17:00':17, '18:00':18, '19:00':19, '20:00':20, \
+                '21:00':21,'22:00':22, '23:00':23, '24:00':24}
+        x_values = ['1:00', '2:00', '3:00', '4:00','5:00','6:00', '7:00', '8:00', '9:00', '10:00', \
+            '11:00', '12:00','13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', \
+                '21:00','22:00', '23:00', '24:00']
+        # for index, day_range_str in enumerate(self.x_values):
+        #     if index != len(x_values) -1:
+        #         range_list = day_range_str.replace('天','').split('-')
+        #         range_list = [int(day_string) for day_string in range_list]
+        #         if day > range_list[0] and day < range_list[1]:
+        #             return x_values[index]
+        #     else:
+        #         return x_values[index]
+
+    def get_y_value(self, datetime):
+        weekdays = {'週一': 0, '週二': 1, '週三': 2, '週四':3, '週五': 4, '週六': 5, '週日': 6}
+        weekdays_map = {0:'週一', 1:'週二', 2:'週三', 3:'週四', 4:'週五', 5:'週六', 6:'週日'}
+        y_values = ['週一', '週二', '週三', '週四', '週五', '週六', '週日']
+        return weekdays_map[datetime.day]
+        # for index, count_string in enumerate(y_values):
+        #     if index != len(y_values) - 1:
+        #         if count == int(count_string):
+        #             return y_values[index]
+        #     else:
+        #         return y_values[index]
+    def data_router(self, query_set, data_option):
+        '''
+        客單價
+        營業額
+        平均金額
+        人數
+        交易單數
+        def get_data_router(self, option, query_set, date):
+        if option == self.TURNOVER:
+            return self.get_turnover_data(query_set, date)
+        elif option == self.AVGPRICE:
+            return self.get_avg_price_data(query_set, date)
+        elif option == self.PERCUSPRICE:
+            return self.get_per_cus_price_data(query_set, date)
+        '''
+        if data_option == self.TURNOVER:
+            return self.get_turnover_data(query_set)
+        elif data_option == self.AVGPRICE:
+            return self.get_avg_price_data(query_set)
+        elif data_option == self.PERCUSPRICE:
+            return self.get_per_cus_price_data(query_set)
+        elif data_option == self.MEMBER_COUNT:
+            return self.get_member_count_data(query_set)
+        elif data_option == self.ORDER_COUNT:
+            return self.get_order_count_data(query_set)
+
+
+
+    def draw(self):
+        data_options = self.options.get('data_options','')
+        date_start, date_end = self.get_date_range('time_range')
+        purchase_set = PurchaseBase.objects.filter(removed=False).filter(datetime__gte=date_start, datetime__lte=date_end)
+        # if data_options:
+        #     self.data_router(purchase_base_set, data_options)
+        now = timezone.now()
+        per_data_count = {}
+        # purchase_data = purchase_base_set.values('clientbase_id','datetime','total_price')
+        total_data = []
+        f_data = {}
+        for x in self.x_values:
+            for y in self.y_values:
+                key_string = x + '__' + y
+                f_data[key_string] = 0
+
+        for per_data in f_data:
+            x = per_data.split('__')[0]
+            y = ''.join(per_data.split('__')[1:])
+            self.set_value(x, y, f_data[per_data])
+
 
 
 @overview_charts.chart(name='交易客單價區間單數直條圖')
@@ -822,6 +939,183 @@ class PurchaseOrderBar(BarChart):
             })
 
         self.create_label(data=data, notes=self.notes)
+
+@overview_charts.chart(name='RF分析')
+class RFHeatMap(MatrixChart):
+    def __init__(self):
+        super().__init__()
+        now = timezone.now()
+        self.add_options(time_range=DateRangeCondition('時間範圍').default(
+            (
+                (now - datetime.timedelta(days=90)).isoformat(),
+                now.isoformat()
+            )
+        ))
+
+    def get_per_date_list(self, start_date, end_date):
+        date_list = []
+        delta = end_date - start_date
+        for i in range(delta.days + 1):
+            date_list.append(start_date + datetime.timedelta(days=i))
+        return date_list
+
+    def explain_x(self):
+        return '最後一次消費天數'
+
+    def explain_y(self):
+        return '消費頻率'
+
+    def get_x_value(self, day):
+        x_values = ['0-7天', '8-15天', '16-22天', '23-30天','31-90天','>90天']
+        for index, day_range_str in enumerate(x_values):
+            if index != len(x_values) -1:
+                range_list = day_range_str.replace('天','').split('-')
+                range_list = [int(day_string) for day_string in range_list]
+                if day > range_list[0] and day < range_list[1]:
+                    return x_values[index]
+        return x_values[index]
+
+    def get_y_value(self, count):
+        y_values = ['1', '2', '3', '4', '5', '>6']
+        for index, count_string in enumerate(y_values):
+            if index != len(y_values) - 1:
+                if count == int(count_string):
+                    return y_values[index]
+        return y_values[index]
+
+    def draw(self):
+        date_start, date_end = self.get_date_range('time_range')
+        purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(datetime__lte=date_end, datetime__gte=date_start)
+        now = timezone.now()
+        x_values = ['0-7天', '8-15天', '16-22天', '23-30天','31-90天','>90天']
+        y_values = ['1', '2', '3', '4', '5', '>6']
+        now = timezone.now()
+        per_data_count = {}
+        perchase_data = purchase_base_set.values('clientbase_id','datetime')
+        for per_data in perchase_data:
+            if per_data_count.get(per_data['clientbase_id']):
+                # judge condition
+                per_data_count[per_data['clientbase_id']]['count'] += 1
+                if per_data['datetime'] < per_data_count[per_data['clientbase_id']]['last_datetime']:
+                    per_data_count[per_data['clientbase_id']]['last_datetime'] = per_data['datetime']
+                    per_data_count[per_data['clientbase_id']]['last_purchase_day'] = (now - per_data['datetime']).days
+            else:
+                per_data_count[per_data['clientbase_id']] = {
+                    'count': 1,
+                    'last_datetime': per_data['datetime'],
+                    'last_purchase_day': (now - per_data['datetime']).days
+                }
+        f_data = {}
+
+        for x in x_values:
+            for y in y_values:
+                key_string = x + '__' + y
+                f_data[key_string] = 0
+
+        for per_data in per_data_count:
+            x_value = self.get_x_value(per_data_count[per_data]['last_purchase_day'])
+            y_value = self.get_y_value(per_data_count[per_data]['count'])
+            key_string = x_value + '__' + y_value
+            if f_data.get(key_string):
+                f_data[key_string] += 1
+            else:
+                f_data[key_string] = 1
+
+        for per_data in f_data:
+            x = per_data.split('__')[0]
+            y = ''.join(per_data.split('__')[1:])
+            self.set_value(x, y, f_data[per_data])
+
+@overview_charts.chart(name='RFM分析')
+class RFMHeatMap(MatrixChart):
+    def __init__(self):
+        super().__init__()
+        now = timezone.now()
+        self.add_options(time_range=DateRangeCondition('時間範圍').default(
+            (
+                (now - datetime.timedelta(days=90)).isoformat(),
+                now.isoformat()
+            )
+        ))
+
+    def get_per_date_list(self, start_date, end_date):
+        date_list = []
+        delta = end_date - start_date
+        for i in range(delta.days + 1):
+            date_list.append(start_date + datetime.timedelta(days=i))
+        return date_list
+
+    def explain_x(self):
+        return '最後一次消費天數'
+
+    def explain_y(self):
+        return '消費頻率'
+
+    def get_x_value(self, day):
+        x_values = ['0-7天', '8-15天', '16-22天', '23-30天','31-90天','>90天']
+        for index, day_range_str in enumerate(x_values):
+            if index != len(x_values) -1:
+                range_list = day_range_str.replace('天','').split('-')
+                range_list = [int(day_string) for day_string in range_list]
+                if day > range_list[0] and day < range_list[1]:
+                    return x_values[index]
+            else:
+                return x_values[index]
+
+    def get_y_value(self, count):
+        y_values = ['1', '2', '3', '4', '5', '>6']
+        for index, count_string in enumerate(y_values):
+            if index != len(y_values) - 1:
+                if count == int(count_string):
+                    return y_values[index]
+            else:
+                return y_values[index]
+
+    def draw(self):
+        purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        date_start, date_end = self.get_date_range('time_range')
+        now = timezone.now()
+        x_values = ['0-7天', '8-15天', '16-22天', '23-30天','31-90天','>90天']
+        y_values = ['1', '2', '3', '4', '5', '>6']
+        now = timezone.now()
+        per_data_count = {}
+        perchase_data = purchase_base_set.filter(datetime__lte=date_end, datetime__gte=date_start).values('clientbase_id','datetime','total_price')
+        for per_data in perchase_data:
+            if per_data_count.get(per_data['clientbase_id']):
+                per_data_count[per_data['clientbase_id']]['count'] += 1
+                per_data_count[per_data['clientbase_id']]['total_price'] += per_data['total_price']
+                if per_data['datetime'] < per_data_count[per_data['clientbase_id']]['last_datetime']:
+                    per_data_count[per_data['clientbase_id']]['last_datetime'] = per_data['datetime']
+                    per_data_count[per_data['clientbase_id']]['last_purchase_day'] = (now - per_data['datetime']).days
+            else:
+                per_data_count[per_data['clientbase_id']] = {
+                    'count': 1,
+                    'total_price':  per_data['total_price'],
+                    'last_datetime': per_data['datetime'],
+                    'last_purchase_day': (now - per_data['datetime']).days
+                }
+        f_data = {}
+
+        for x in x_values:
+            for y in y_values:
+                key_string = x + '__' + y
+                f_data[key_string] = 0
+
+        for per_data in per_data_count:
+            x_value = self.get_x_value(per_data_count[per_data]['last_purchase_day'])
+            y_value = self.get_y_value(per_data_count[per_data]['count'])
+            avg = math.ceil(per_data_count[per_data]['total_price'] / per_data_count[per_data]['count'])
+            key_string = x_value + '__' + y_value
+            if f_data.get(key_string):
+                f_data[key_string] += avg
+            else:
+                f_data[key_string] = avg
+
+        for per_data in f_data:
+            x = per_data.split('__')[0]
+            y = ''.join(per_data.split('__')[1:])
+            self.set_value(x, y, f_data[per_data])
+
 
 @overview_charts.chart(name='RFM 人數直條圖')
 class RFMCountBar(BarChart):
@@ -1594,11 +1888,14 @@ class Purchase:
         PurchaseMemberRateCard.preset('會員交易率'),
         PurchaseCountCard.preset('交易筆數'),
         AvgPriceCard.preset('平均金額'),
-        AvgPerMemberCard.preset('單價'),
+        AvgPerMemberCard.preset('客單價'),
+        PurchaseTimeHeatMap.preset('交易時間熱區圖', width='full'),
         AvgPerMemberRange.preset('交易客單價區間單數直條圖', width='full'),
         PurchaseNumberBar.preset('交易金額直條圖(集團)', width='full'),
         PurchaseMemCountBar.preset('交易人數直條圖(集團)', width='full'),
         PurchaseOrderBar.preset('交易單數直條圖(集團)', width='full'),
+        RFHeatMap.preset('RF分析'),
+        RFMHeatMap.preset('RFM分析'),
         RFMCountBar.preset('RFM 分數人數直條圖', width='full'),
         RepurchaseMemCountBar.preset('交易回購人數直條圖', width='full'),
         RepurchaseDayCountBar.preset('交易回購天數直條圖', width='full'),
