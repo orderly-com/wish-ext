@@ -7,7 +7,7 @@ import math
 import numpy as np
 
 from django.utils import timezone
-from django.db.models.functions import TruncDate, ExtractMonth, ExtractYear, Cast
+from django.db.models.functions import TruncDate, ExtractMonth, ExtractYear, Cast, ExtractWeekDay
 from django.db.models import Count, Func, Max, Min, IntegerField, Sum, Avg
 from django.db.models.expressions import OuterRef, Subquery
 from dateutil import rrule
@@ -447,33 +447,13 @@ class PurchaseTimeHeatMap(HeatMapChart):
     def explain_y(self):
         return '消費頻率'
 
-    def get_x_value(self, datetime):
-        hours = {'1:00': 1, '2:00':2, '3:00':3, '4:00':4,'5:00':5,'6:00':6, '7:00':7, '8:00':8, '9:00':9, '10:00':10, \
-            '11:00':11, '12:00':12,'13:00':13, '14:00':14, '15:00':15, '16:00':16, '17:00':17, '18:00':18, '19:00':19, '20:00':20, \
-                '21:00':21,'22:00':22, '23:00':23, '24:00':24}
-        x_values = ['1:00', '2:00', '3:00', '4:00','5:00','6:00', '7:00', '8:00', '9:00', '10:00', \
-            '11:00', '12:00','13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', \
-                '21:00','22:00', '23:00', '24:00']
-        # for index, day_range_str in enumerate(self.x_values):
-        #     if index != len(x_values) -1:
-        #         range_list = day_range_str.replace('天','').split('-')
-        #         range_list = [int(day_string) for day_string in range_list]
-        #         if day > range_list[0] and day < range_list[1]:
-        #             return x_values[index]
-        #     else:
-        #         return x_values[index]
+    def get_x_value(self, hour):
+        return f'{hour}:00'
 
-    def get_y_value(self, datetime):
-        weekdays = {'週一': 0, '週二': 1, '週三': 2, '週四':3, '週五': 4, '週六': 5, '週日': 6}
+    def get_y_value(self, day):
         weekdays_map = {0:'週一', 1:'週二', 2:'週三', 3:'週四', 4:'週五', 5:'週六', 6:'週日'}
-        y_values = ['週一', '週二', '週三', '週四', '週五', '週六', '週日']
-        return weekdays_map[datetime.day]
-        # for index, count_string in enumerate(y_values):
-        #     if index != len(y_values) - 1:
-        #         if count == int(count_string):
-        #             return y_values[index]
-        #     else:
-        #         return y_values[index]
+        return weekdays_map[day]
+
     def data_router(self, query_set, data_option):
         '''
         客單價
@@ -481,13 +461,6 @@ class PurchaseTimeHeatMap(HeatMapChart):
         平均金額
         人數
         交易單數
-        def get_data_router(self, option, query_set, date):
-        if option == self.TURNOVER:
-            return self.get_turnover_data(query_set, date)
-        elif option == self.AVGPRICE:
-            return self.get_avg_price_data(query_set, date)
-        elif option == self.PERCUSPRICE:
-            return self.get_per_cus_price_data(query_set, date)
         '''
         if data_option == self.TURNOVER:
             return self.get_turnover_data(query_set)
@@ -500,23 +473,51 @@ class PurchaseTimeHeatMap(HeatMapChart):
         elif data_option == self.ORDER_COUNT:
             return self.get_order_count_data(query_set)
 
+    def get_turnover_data(self, qs):
+        return qs.annotate(weekday=ExtractWeekDay('datetime')).values('datetime__hour', 'weekday').annotate(value=Sum('total_price'))
+
+    def get_order_count_data(self, qs):
+        return qs.annotate(weekday=ExtractWeekDay('datetime')).values('datetime__hour', 'weekday').annotate(value=Count('id'))
+
+    def get_avg_price_data(self, qs):
+        return qs.annotate(weekday=ExtractWeekDay('datetime')).values('datetime__hour', 'weekday').annotate(value=Avg('total_price'))
+
+    def get_per_cus_price_data(self, qs):
+        return qs.annotate(weekday=ExtractWeekDay('datetime')).values('datetime__hour', 'weekday', 'clientbase_id').annotate(value=Avg('total_price'))
+
+    def get_member_count_data(self, qs):
+        return qs.annotate(weekday=ExtractWeekDay('datetime')).values('datetime__hour', 'weekday').annotate(value=Count('clientbase_id'))
+
+    def result_map(self, data_option):
+        if data_option == self.TURNOVER:
+            return 'price_sum'
+        elif data_option == self.AVGPRICE:
+            return 'avg_price'
+        elif data_option == self.PERCUSPRICE:
+            return 'per_cus_price'
+        elif data_option == self.MEMBER_COUNT:
+            return 'member_count'
+        elif data_option == self.ORDER_COUNT:
+            return 'member_count'
 
 
     def draw(self):
         data_options = self.options.get('data_options','')
         date_start, date_end = self.get_date_range('time_range')
-        purchase_set = PurchaseBase.objects.filter(removed=False).filter(datetime__gte=date_start, datetime__lte=date_end)
-        # if data_options:
-        #     self.data_router(purchase_base_set, data_options)
-        now = timezone.now()
-        per_data_count = {}
-        # purchase_data = purchase_base_set.values('clientbase_id','datetime','total_price')
-        total_data = []
+        purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(datetime__gte=date_start, datetime__lte=date_end)
+        if data_options:
+            purchasebase_qs = self.data_router(purchasebase_qs, data_options)
         f_data = {}
         for x in self.x_values:
             for y in self.y_values:
                 key_string = x + '__' + y
                 f_data[key_string] = 0
+
+        for per_data in purchasebase_qs:
+            x_value = self.get_x_value(per_data['datetime__hour'])
+            y_value = self.get_y_value(per_data['weekday'])
+            key_string = x_value + '__' + y_value
+            f_data[key_string] += per_data['value']
 
         for per_data in f_data:
             x = per_data.split('__')[0]
