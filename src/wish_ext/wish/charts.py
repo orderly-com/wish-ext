@@ -14,7 +14,7 @@ from dateutil import rrule
 
 from charts.exceptions import NoData
 from charts.registries import chart_category
-from charts.drawers import PieChart, BarChart, LineChart, HorizontalBarChart, DataCard
+from charts.drawers import PieChart, BarChart, LineChart, HorizontalBarChart, DataCard, TextArea
 
 from filtration.conditions import DateRangeCondition, ModeCondition, SingleSelectCondition, ChoiceCondition, SelectCondition, Condition, DropDownCondition
 from orderly_core.team.charts import client_behavior_charts
@@ -343,6 +343,11 @@ class FutureLevelDueTrend(LineChart):
 
             self.create_label(name=name, data=data, notes=notes)
 
+@overview_charts.chart(name='會員交易指標')
+class PurchaseIndicators(TextArea):
+    def draw(self):
+        self.set_data('12345')
+
 @overview_charts.chart(name='營業額')
 class TurnOverCard(DataCard):
     def draw(self):
@@ -416,10 +421,11 @@ class PurchaseTimeHeatMap(HeatMapChart):
     def __init__(self):
         super().__init__()
         now = timezone.now()
-        self.x_values = ['1:00', '2:00', '3:00', '4:00','5:00','6:00', '7:00', '8:00', '9:00', '10:00', \
+        self.x_values = ['01:00', '02:00', '03:00', '04:00','05:00','06:00', '07:00', '08:00', '09:00', '10:00', \
             '11:00', '12:00','13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', \
                 '21:00','22:00', '23:00', '24:00']
-        self.y_values = ['週一', '週二', '週三', '週四', '週五', '週六', '週日']
+        # self.y_values = ['週一', '週二', '週三', '週四', '週五', '週六', '週日']
+        self.y_values = ['週日', '週六', '週五', '週四', '週三', '週二', '週一']
         self.add_options(time_range=DateRangeCondition('時間範圍').default(
             (
                 (now - datetime.timedelta(days=90)).isoformat(),
@@ -448,10 +454,13 @@ class PurchaseTimeHeatMap(HeatMapChart):
         return '消費頻率'
 
     def get_x_value(self, hour):
+        if hour < 10:
+            return f'0{hour}:00'
         return f'{hour}:00'
 
     def get_y_value(self, day):
-        weekdays_map = {0:'週一', 1:'週二', 2:'週三', 3:'週四', 4:'週五', 5:'週六', 6:'週日'}
+        # django weekday
+        weekdays_map = {2:'週一', 3:'週二', 4:'週三', 5:'週四', 6:'週五', 7:'週六', 1:'週日'}
         return weekdays_map[day]
 
     def data_router(self, query_set, data_option):
@@ -1289,6 +1298,7 @@ class RepurchaseDayCountBar(BarChart):
             else:
                 day_data[4] += (now - per_data['datetime']).days
                 data_member_count[4] += 1
+        print('per_data_count: ', per_data_count)
         f_data_member_count = [1 for count in data_member_count if count == 0]
         data = [ math.ceil(day / count) for day, count in zip(day_data, f_data_member_count)]
         self.notes.update({
@@ -1297,6 +1307,90 @@ class RepurchaseDayCountBar(BarChart):
         })
 
         self.create_label(data=data, notes=self.notes)
+
+@overview_charts.chart(name='NESL累計圖')
+class NESLHorBar(HorizontalBarChart):
+    def __init__(self):
+        super().__init__()
+        now = timezone.now()
+        self.add_options(time_range=DateRangeCondition('時間範圍').default(
+            (
+                (now - datetime.timedelta(days=90)).isoformat(),
+                now.isoformat()
+            )
+        ))
+
+    def explain_y(self):
+        return '人數'
+
+    def explain_x(self):
+        return '會員類型'
+
+    def get_labels(self):
+        labels = []
+        for days in self.trace_days:
+            labels.append(f'{days} 天前')
+        # return ['N', 'E', 'S', 'L']
+        return labels
+
+    def get_labels_info(self):
+        labels = []
+        for days in self.trace_days:
+            now = timezone.now()
+            date_string = (now - datetime.timedelta(days=days)).strftime('%Y 年 %m 月 %d 日')
+            labels.append(f'{date_string} ~ {date_string}')
+        return labels
+
+    def draw(self):
+        now = timezone.now()
+        date_start, date_end = self.get_date_range('time_range')
+        levels = ['N','E','S','L']
+        for level in levels:
+            data = []
+            for days in self.trace_days:
+                date = now - datetime.timedelta(days=days)
+                date_range_in_ne_group = [(date - datetime.timedelta(days=90)), date]
+                date_range_in_sl_group = [(date - datetime.timedelta(days=365)), date - datetime.timedelta(days=120)]
+                purchase_set = PurchaseBase.objects.filter(removed=False)
+                # get NE group data in range
+                purchasebase_ne_group=purchase_set.filter(datetime__lte=date_range_in_ne_group[1], datetime__gte=date_range_in_ne_group[0])
+                # get SL group data in range
+                purchasebase_sl_group=purchase_set.filter(datetime__lte=date_range_in_sl_group[1], datetime__gte=date_range_in_sl_group[0])
+                # get all NE group clients id
+                purchasebase_ne_group_cli_id = purchasebase_ne_group.values_list('clientbase_id',flat=True)
+                # get all SL group
+                purchasebase_sl_group_cli_id = purchasebase_sl_group.values_list('clientbase_id',flat=True)
+                # get real NE data(exclude SL data)
+                ne_group_id = purchasebase_ne_group_cli_id.exclude(clientbase_id__in=list(purchasebase_sl_group_cli_id))
+                # get real SL data(exclude NE data)
+                sl_group_id = purchasebase_sl_group_cli_id.exclude(clientbase_id__in=list(purchasebase_ne_group_cli_id))
+                # get NE count data
+                ne_group_count = ne_group_id.annotate(Count('clientbase_id')).values('clientbase_id','clientbase_id__count')
+                # get SL count data
+                sl_group_count = sl_group_id.annotate(Count('clientbase_id')).values('clientbase_id','clientbase_id__count')
+                # S count
+                s_count = sl_group_count.filter(clientbase_id__count=1).count()
+                # L count
+                l_count = sl_group_count.exclude(clientbase_id__count=1).count()
+                # N count
+                n_count = ne_group_count.filter(clientbase_id__count=1).count()
+                # E count
+                e_count = ne_group_count.exclude(clientbase_id__count=1).count()
+
+                # jugde data
+                if level == 'N':
+                    data.append(n_count)
+                elif level == 'E':
+                    data.append(e_count)
+                elif level == 'S':
+                    data.append(s_count)
+                else:
+                    data.append(l_count)
+            notes = {
+                'tooltip_value': '{data} 人',
+                'tooltip_name': ' '
+            }
+            self.create_label(name=level, data=data, notes=notes)
 
 
 @past_charts.chart(name='交易人數往期直條圖')
@@ -1514,8 +1608,6 @@ class NESLCount(BarChart):
     def draw(self):
         self.trace_days = self.options.get('trace_days', self.trace_days)
         now = timezone.now()
-        client_qs = self.team.clientbase_set.filter(removed=False)
-        self.set_total(len(client_qs))
         levels = ['N','E','S','L']
         for level in levels:
             data = []
@@ -1884,6 +1976,7 @@ class Levels:
 class Purchase:
     name = '交易模組'
     charts = [
+        PurchaseIndicators.preset('會員交易指標', width = 'quarter'),
         TurnOverCard.preset('營業額'),
         PurchaseMemberCard.preset('會員交易人數'),
         PurchaseMemberRateCard.preset('會員交易率'),
@@ -1898,8 +1991,9 @@ class Purchase:
         RFHeatMap.preset('RF分析'),
         RFMHeatMap.preset('RFM分析'),
         RFMCountBar.preset('RFM 分數人數直條圖', width='full'),
-        RepurchaseMemCountBar.preset('交易回購人數直條圖', width='full'),
-        RepurchaseDayCountBar.preset('交易回購天數直條圖', width='full'),
+        RepurchaseMemCountBar.preset('交易回購人數直條圖'),
+        RepurchaseDayCountBar.preset('交易回購天數直條圖'),
+        # NESLHorBar.preset('NESL累計圖', width='full'),
         PurchaseMemberCount.preset('交易人數往期直條圖', chart_type='bar'),
         PurchaseNumberCount.preset('交易金額往期直條圖', chart_type='bar'),
         PurchaseOrderCount.preset('交易單數往期直條圖', chart_type='bar'),
