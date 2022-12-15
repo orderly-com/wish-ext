@@ -47,6 +47,7 @@ class MemberLevelPieChart(PieChart):
 
 @overview_charts.chart(name='等級升降續熱區圖')
 class LevelUpMatrMatrix(MatrixChart):
+    unit = '人數'
     def __init__(self):
         super().__init__()
         self.add_options(join_time_range=DateRangeCondition('時間範圍'))
@@ -413,6 +414,7 @@ class AvgPerMemberCard(DataCard):
         self.set_data(result, postfix='元')
 @overview_charts.chart(name='交易時間熱區圖')
 class PurchaseTimeHeatMap(HeatMapChart):
+    unit = '元'
     TURNOVER = 'turnover'
     PERCUSPRICE = 'per_cus_price'
     AVGPRICE = 'avg_price'
@@ -472,14 +474,19 @@ class PurchaseTimeHeatMap(HeatMapChart):
         交易單數
         '''
         if data_option == self.TURNOVER:
+            self.set_unit('元')
             return self.get_turnover_data(query_set)
         elif data_option == self.AVGPRICE:
+            self.set_unit('元')
             return self.get_avg_price_data(query_set)
         elif data_option == self.PERCUSPRICE:
+            self.set_unit('元')
             return self.get_per_cus_price_data(query_set)
         elif data_option == self.MEMBER_COUNT:
+            self.set_unit('人數')
             return self.get_member_count_data(query_set)
         elif data_option == self.ORDER_COUNT:
+            self.set_unit('訂單數')
             return self.get_order_count_data(query_set)
 
     def get_turnover_data(self, qs):
@@ -952,6 +959,7 @@ class PurchaseOrderBar(BarChart):
 
 @overview_charts.chart(name='RF分析')
 class RFHeatMap(MatrixChart):
+    unit = '人數'
     def __init__(self):
         super().__init__()
         now = timezone.now()
@@ -1038,6 +1046,7 @@ class RFHeatMap(MatrixChart):
 
 @overview_charts.chart(name='RFM分析')
 class RFMHeatMap(MatrixChart):
+    unit = '金額'
     def __init__(self):
         super().__init__()
         now = timezone.now()
@@ -1363,7 +1372,12 @@ class NESLHorBar(HorizontalBarChart):
         e = e_count + n_count
         s = s_count + e
         l = l_count + s
-        data = [int(n_count), int(e),int(s), int(l)]
+        data = [
+            [0, int(n_count)],
+            [n_count, int(e)],
+            [e, int(s)],
+            [s, int(l)]
+        ]
 
         notes = {
             'tooltip_value': '{data} 人',
