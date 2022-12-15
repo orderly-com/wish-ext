@@ -558,6 +558,9 @@ class AvgPerMemberRange(BarChart):
             )
         )
 
+    def explain_x(self):
+        return '金額'
+
     def explain_y(self):
         return '單數'
 
@@ -664,6 +667,9 @@ class PurchaseNumberBar(BarChart):
 
         self.add_options(all_brand=brand_selection)
 
+    def explain_x(self):
+        return '時間'
+
     def explain_y(self):
         return '金額'
 
@@ -724,9 +730,6 @@ class PurchaseNumberBar(BarChart):
         elif option == self.PERCUSPRICE:
             return self.get_per_cus_price_data(query_set, date)
 
-    def explain_y(self):
-        return '金額'
-
 
     def draw(self):
         # brand option selection
@@ -766,7 +769,7 @@ class PurchaseNumberBar(BarChart):
             result = self.get_data_router(select_option, purchase_base_set, date)
             data.append(result)
         self.notes.update({
-                'tooltip_value': '交易金額 {data} 元',
+                'tooltip_value': '交易金額 <br> {data} 元',
                 'tooltip_name': ' '
             })
 
@@ -828,6 +831,9 @@ class PurchaseMemCountBar(BarChart):
             date_list.append(start_date + datetime.timedelta(days=i))
         return date_list
 
+    def explain_x(self):
+        return '時間'
+
     def explain_y(self):
         return '人數'
 
@@ -858,7 +864,7 @@ class PurchaseMemCountBar(BarChart):
             order_member = purchase_base_set.filter(removed=False).values('clientbase_id').distinct().filter(datetime__year=date.year,datetime__month=date.month)
             data.append(order_member.count())
         self.notes.update({
-                'tooltip_value': '交易人數 {data} 人',
+                'tooltip_value': '交易人數 <br> {data} 人',
                 'tooltip_name': ' '
             })
 
@@ -921,6 +927,9 @@ class PurchaseOrderBar(BarChart):
             date_list.append(start_date + datetime.timedelta(days=i))
         return date_list
 
+    def explain_x(self):
+        return '時間'
+
     def explain_y(self):
         return '單數'
 
@@ -951,7 +960,7 @@ class PurchaseOrderBar(BarChart):
             order = purchase_base_set.filter(removed=False).filter(datetime__year=date.year,datetime__month=date.month)
             data.append(order.count())
         self.notes.update({
-                'tooltip_value': '交易單數 {data} 單',
+                'tooltip_value': '交易單數 <br> {data} 單',
                 'tooltip_name': ' '
             })
 
@@ -1141,10 +1150,10 @@ class RFMCountBar(BarChart):
     def __init__(self):
         super().__init__()
 
-    def explain_x(self):
+    def explain_y(self):
         return '人數'
 
-    def explain_y(self):
+    def explain_x(self):
         return 'RFM分數'
 
     def get_turnover_data(self, query_set):
@@ -1213,6 +1222,9 @@ class RepurchaseMemCountBar(BarChart):
         for i in range(delta.days + 1):
             date_list.append(start_date + datetime.timedelta(days=i))
         return date_list
+
+    def explain_x(self):
+        return '回購頻率'
 
     def explain_y(self):
         return '人數'
@@ -1402,6 +1414,9 @@ class PurchaseMemberCount(BarChart):
     def explain_y(self):
         return '人數'
 
+    def explain_x(self):
+        return '時間'
+
     def get_labels(self):
         labels = []
         for days in self.trace_days:
@@ -1457,6 +1472,9 @@ class PurchaseNumberCount(BarChart):
 
     def explain_y(self):
         return '金額'
+
+    def explain_x(self):
+        return '時間'
 
     def get_total_price_sum(self, query_set, date):
         return query_set.aggregate(Sum('total_price'))
@@ -1538,6 +1556,9 @@ class PurchaseOrderCount(BarChart):
     def explain_y(self):
         return '單數'
 
+    def explain_x(self):
+        return '時間'
+
     def get_labels(self):
         labels = []
         for days in self.trace_days:
@@ -1580,6 +1601,9 @@ class NESLCount(BarChart):
     def __init__(self):
         super().__init__()
         self.trace_days = [365, 30, 7, 1]
+
+    def explain_x(self):
+        return '時間'
 
     def explain_y(self):
         return '人數'
@@ -1688,6 +1712,9 @@ class PurchasePriceTrend(LineChart):
 
         self.add_options(all_brand=brand_selection)
 
+    def explain_x(self):
+        return '  '
+
     def explain_y(self):
         return '金額'
 
@@ -1747,9 +1774,6 @@ class PurchasePriceTrend(LineChart):
             return self.get_avg_price_data(query_set, date)
         elif option == self.PERCUSPRICE:
             return self.get_per_cus_price_data(query_set, date)
-
-    def explain_y(self):
-        return '金額'
 
 
     def draw(self):
@@ -1836,6 +1860,9 @@ class PurchaseMemberTrend(LineChart):
             date_list.append(start_date + datetime.timedelta(days=i))
         return date_list
 
+    def explain_x(self):
+        return '  '
+
     def explain_y(self):
         return '人數'
 
@@ -1920,6 +1947,9 @@ class PurchaseOrderTrend(LineChart):
         for i in range(delta.days + 1):
             date_list.append(start_date + datetime.timedelta(days=i))
         return date_list
+
+    def explain_x(self):
+        return '  '
 
     def explain_y(self):
         return '單數'
