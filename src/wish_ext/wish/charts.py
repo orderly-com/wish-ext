@@ -216,7 +216,7 @@ class LevelClientCountTracing(BarChart):
         for days in self.trace_days:
             now = timezone.now()
             date_string = (now - datetime.timedelta(days=days)).strftime('%Y 年 %m 月 %d 日')
-            labels.append(f'{date_string} ~ {date_string}')
+            labels.append(date_string)
         return labels
 
     def draw(self):
@@ -1338,7 +1338,7 @@ class NESLHorBar(HorizontalBarChart):
         for days in self.trace_days:
             now = timezone.now()
             date_string = (now - datetime.timedelta(days=days)).strftime('%Y 年 %m 月 %d 日')
-            labels.append(f'{date_string} ~ {date_string}')
+            labels.append(date_string)
         return labels
 
     def draw(self):
@@ -1420,7 +1420,7 @@ class PurchaseMemberCount(BarChart):
         for days in self.trace_days:
             now = timezone.now()
             date_string = (now - datetime.timedelta(days=days)).strftime('%Y 年 %m 月 %d 日')
-            labels.append(f'{date_string} ~ {date_string}')
+            labels.append(date_string)
         return labels
 
     def draw(self):
@@ -1510,7 +1510,7 @@ class PurchaseNumberCount(BarChart):
         for days in self.trace_days:
             now = timezone.now()
             date_string = (now - datetime.timedelta(days=days)).strftime('%Y 年 %m 月 %d 日')
-            labels.append(f'{date_string} ~ {date_string}')
+            labels.append(date_string)
         return labels
 
     def draw(self):
@@ -1556,7 +1556,7 @@ class PurchaseOrderCount(BarChart):
         for days in self.trace_days:
             now = timezone.now()
             date_string = (now - datetime.timedelta(days=days)).strftime('%Y 年 %m 月 %d 日')
-            labels.append(f'{date_string} ~ {date_string}')
+            labels.append(date_string)
         return labels
 
     def draw(self):
@@ -1602,7 +1602,7 @@ class NESLCount(BarChart):
         for days in self.trace_days:
             now = timezone.now()
             date_string = (now - datetime.timedelta(days=days)).strftime('%Y 年 %m 月 %d 日')
-            labels.append(f'{date_string} ~ {date_string}')
+            labels.append(date_string)
         return labels
 
     def draw(self):
