@@ -351,6 +351,7 @@ class PurchaseIndicators(TextArea):
 
 @overview_charts.chart(name='營業額')
 class TurnOverCard(DataCard):
+    icon = 'licon-coin'
     def draw(self):
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
         qs_result_dict =  purchase_base_set.aggregate(Sum('total_price'))
@@ -361,6 +362,7 @@ class TurnOverCard(DataCard):
 
 @overview_charts.chart(name='會員交易人數')
 class PurchaseMemberCard(DataCard):
+    icon = 'licon-members'
     def draw(self):
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
         member_count = purchase_base_set.values('clientbase_id').distinct().count()
@@ -368,6 +370,7 @@ class PurchaseMemberCard(DataCard):
 
 @overview_charts.chart(name='會員交易率')
 class PurchaseMemberRateCard(DataCard):
+    icon = 'licon-members'
     def draw(self):
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
         purchase_member_count = purchase_base_set.values('clientbase_id').distinct().count()
@@ -377,6 +380,7 @@ class PurchaseMemberRateCard(DataCard):
 
 @overview_charts.chart(name='交易筆數')
 class PurchaseCountCard(DataCard):
+    icon = 'licon-order'
     def draw(self):
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
         purchase_count = purchase_base_set.count()
@@ -384,6 +388,7 @@ class PurchaseCountCard(DataCard):
 
 @overview_charts.chart(name='平均金額')
 class AvgPriceCard(DataCard):
+    icon = 'licon-coin'
     def draw(self):
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
         qs_result_dict =  purchase_base_set.aggregate(Sum('total_price'))
@@ -400,6 +405,7 @@ class AvgPriceCard(DataCard):
 
 @overview_charts.chart(name='客單價')
 class AvgPerMemberCard(DataCard):
+    icon = 'licon-coin'
     def draw(self):
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
         qs_result_dict =  purchase_base_set.aggregate(Sum('total_price'))
