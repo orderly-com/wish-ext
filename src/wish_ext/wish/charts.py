@@ -1972,17 +1972,19 @@ class Levels:
         FutureLevelDueTrend.preset('等級即將到期趨勢折線圖', width='full')
     ]
 
+GROUP_MEMBER_ORDERS = '會員交易指標'
+ORDER_AVG_METRICS = '平均交易指標'
 @dashboard_preset
 class Purchase:
     name = '交易模組'
     charts = [
-        PurchaseIndicators.preset('會員交易指標', width = 'quarter'),
-        TurnOverCard.preset('營業額'),
-        PurchaseMemberCard.preset('會員交易人數'),
-        PurchaseMemberRateCard.preset('會員交易率'),
-        PurchaseCountCard.preset('交易筆數'),
-        AvgPriceCard.preset('平均金額'),
-        AvgPerMemberCard.preset('客單價'),
+        # PurchaseIndicators.preset('會員交易指標', width = 'quarter'),
+        TurnOverCard.preset('營業額', group=GROUP_MEMBER_ORDERS),
+        PurchaseMemberCard.preset('會員交易人數', group=GROUP_MEMBER_ORDERS),
+        PurchaseMemberRateCard.preset('會員交易率', group=GROUP_MEMBER_ORDERS),
+        PurchaseCountCard.preset('交易筆數', group=GROUP_MEMBER_ORDERS),
+        AvgPriceCard.preset('平均金額', group=ORDER_AVG_METRICS),
+        AvgPerMemberCard.preset('客單價', group=ORDER_AVG_METRICS),
         PurchaseTimeHeatMap.preset('交易時間熱區圖', width='full'),
         AvgPerMemberRange.preset('交易客單價區間單數直條圖', width='full'),
         PurchaseNumberBar.preset('交易金額直條圖(集團)', width='full'),
