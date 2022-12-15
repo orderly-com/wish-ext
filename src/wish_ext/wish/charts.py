@@ -1327,70 +1327,49 @@ class NESLHorBar(HorizontalBarChart):
         return '會員類型'
 
     def get_labels(self):
-        labels = []
-        for days in self.trace_days:
-            labels.append(f'{days} 天前')
-        # return ['N', 'E', 'S', 'L']
-        return labels
-
-    def get_labels_info(self):
-        labels = []
-        for days in self.trace_days:
-            now = timezone.now()
-            date_string = (now - datetime.timedelta(days=days)).strftime('%Y 年 %m 月 %d 日')
-            labels.append(date_string)
-        return labels
+        return ['N', 'E', 'S', 'L']
 
     def draw(self):
         now = timezone.now()
+        data = []
         date_start, date_end = self.get_date_range('time_range')
-        levels = ['N','E','S','L']
-        for level in levels:
-            data = []
-            for days in self.trace_days:
-                date = now - datetime.timedelta(days=days)
-                date_range_in_ne_group = [(date - datetime.timedelta(days=90)), date]
-                date_range_in_sl_group = [(date - datetime.timedelta(days=365)), date - datetime.timedelta(days=120)]
-                purchase_set = PurchaseBase.objects.filter(removed=False)
-                # get NE group data in range
-                purchasebase_ne_group=purchase_set.filter(datetime__lte=date_range_in_ne_group[1], datetime__gte=date_range_in_ne_group[0])
-                # get SL group data in range
-                purchasebase_sl_group=purchase_set.filter(datetime__lte=date_range_in_sl_group[1], datetime__gte=date_range_in_sl_group[0])
-                # get all NE group clients id
-                purchasebase_ne_group_cli_id = purchasebase_ne_group.values_list('clientbase_id',flat=True)
-                # get all SL group
-                purchasebase_sl_group_cli_id = purchasebase_sl_group.values_list('clientbase_id',flat=True)
-                # get real NE data(exclude SL data)
-                ne_group_id = purchasebase_ne_group_cli_id.exclude(clientbase_id__in=list(purchasebase_sl_group_cli_id))
-                # get real SL data(exclude NE data)
-                sl_group_id = purchasebase_sl_group_cli_id.exclude(clientbase_id__in=list(purchasebase_ne_group_cli_id))
-                # get NE count data
-                ne_group_count = ne_group_id.annotate(Count('clientbase_id')).values('clientbase_id','clientbase_id__count')
-                # get SL count data
-                sl_group_count = sl_group_id.annotate(Count('clientbase_id')).values('clientbase_id','clientbase_id__count')
-                # S count
-                s_count = sl_group_count.filter(clientbase_id__count=1).count()
-                # L count
-                l_count = sl_group_count.exclude(clientbase_id__count=1).count()
-                # N count
-                n_count = ne_group_count.filter(clientbase_id__count=1).count()
-                # E count
-                e_count = ne_group_count.exclude(clientbase_id__count=1).count()
+        date_range_in_ne_group = [(date_end - datetime.timedelta(days=90)), date_end]
+        date_range_in_sl_group = [(date_end - datetime.timedelta(days=365)), date_end - datetime.timedelta(days=120)]
+        purchase_set = PurchaseBase.objects.filter(removed=False)
+        # get NE group data in range
+        purchasebase_ne_group=purchase_set.filter(datetime__lte=date_range_in_ne_group[1], datetime__gte=date_range_in_ne_group[0])
+        # get SL group data in range
+        purchasebase_sl_group=purchase_set.filter(datetime__lte=date_range_in_sl_group[1], datetime__gte=date_range_in_sl_group[0])
+        # get all NE group clients id
+        purchasebase_ne_group_cli_id = purchasebase_ne_group.values_list('clientbase_id',flat=True)
+        # get all SL group
+        purchasebase_sl_group_cli_id = purchasebase_sl_group.values_list('clientbase_id',flat=True)
+        # get real NE data(exclude SL data)
+        ne_group_id = purchasebase_ne_group_cli_id.exclude(clientbase_id__in=list(purchasebase_sl_group_cli_id))
+        # get real SL data(exclude NE data)
+        sl_group_id = purchasebase_sl_group_cli_id.exclude(clientbase_id__in=list(purchasebase_ne_group_cli_id))
+        # get NE count data
+        ne_group_count = ne_group_id.annotate(Count('clientbase_id')).values('clientbase_id','clientbase_id__count')
+        # get SL count data
+        sl_group_count = sl_group_id.annotate(Count('clientbase_id')).values('clientbase_id','clientbase_id__count')
+        # S count
+        s_count = sl_group_count.filter(clientbase_id__count=1).count()
+        # L count
+        l_count = sl_group_count.exclude(clientbase_id__count=1).count()
+        # N count
+        n_count = ne_group_count.filter(clientbase_id__count=1).count()
+        # E count
+        e_count = ne_group_count.exclude(clientbase_id__count=1).count()
+        e = e_count + n_count
+        s = s_count + e
+        l = l_count + s
+        data = [int(n_count), int(e),int(s), int(l)]
 
-                # jugde data
-                if level == 'N':
-                    data.append(n_count)
-                elif level == 'E':
-                    data.append(e_count)
-                elif level == 'S':
-                    data.append(s_count)
-                else:
-                    data.append(l_count)
-            notes = {
-                'tooltip_value': '{data} 人',
-                'tooltip_name': ' '
-            }
-            self.create_label(name=level, data=data, notes=notes)
+        notes = {
+            'tooltip_value': '{data} 人',
+            'tooltip_name': ' '
+        }
+        self.create_label(data=data, notes=notes)
 
 
 @past_charts.chart(name='交易人數往期直條圖')
@@ -1995,7 +1974,7 @@ class Purchase:
         RFMCountBar.preset('RFM 分數人數直條圖', width='full'),
         RepurchaseMemCountBar.preset('交易回購人數直條圖'),
         RepurchaseDayCountBar.preset('交易回購天數直條圖'),
-        # NESLHorBar.preset('NESL累計圖', width='full'),
+        NESLHorBar.preset('NESL累計圖', width='full'),
         PurchaseMemberCount.preset('交易人數往期直條圖', chart_type='bar'),
         PurchaseNumberCount.preset('交易金額往期直條圖', chart_type='bar'),
         PurchaseOrderCount.preset('交易單數往期直條圖', chart_type='bar'),
