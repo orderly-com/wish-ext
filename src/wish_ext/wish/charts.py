@@ -1346,9 +1346,8 @@ class RepurchaseDayCountBar(BarChart):
             else:
                 day_data[4] += (now - per_data['datetime']).days
                 data_member_count[4] += 1
-        print('per_data_count: ', per_data_count)
         f_data_member_count = [1 for count in data_member_count if count == 0]
-        data = [ math.ceil(day / count) for day, count in zip(day_data, f_data_member_count)]
+        data = [math.ceil(day / count) for day, count in zip(day_data, f_data_member_count)]
         self.notes.update({
             'tooltip_value': f'{{data}} 天 ',
             'tooltip_name': ' '
@@ -2404,11 +2403,6 @@ class PurchaseLevelTurnOver(BarChart):
                 (now - datetime.timedelta(days=90)).isoformat(),
                 now.isoformat()
             )),
-            select_option=ModeCondition('').choice(
-                {'id': self.TURNOVER, 'text': '營業額'},
-                {'id': self.PERCUSPRICE, 'text': '客單價'},
-                {'id': self.AVGPRICE, 'text': '平均金額'},
-            ).default(self.TURNOVER)
         )
 
 
@@ -2433,7 +2427,7 @@ class PurchaseLevelTurnOver(BarChart):
         return ' '
 
     def explain_y(self):
-        return '營業額'
+        return '人數'
 
     def get_teamauth_brand_ids(self):
         teamauth = self.user.teamauth_set.filter(team=self.team).first()
@@ -2461,37 +2455,119 @@ class PurchaseLevelTurnOver(BarChart):
             date_list.append(start_date + datetime.timedelta(days=i))
         return date_list
 
-    def get_turnover_data(self, name, query_set, date):
-        qs_result_dict =  query_set.filter(current_level_name=name).filter(datetime__year=date.year,datetime__month=date.month).aggregate(Sum('total_price'))
-        result = 0
-        if qs_result_dict.get('total_price__sum'):
-            result = qs_result_dict.get('total_price__sum')
-        return result
-
-    def get_avg_price_data(self, name, query_set, date):
-        turn_over = self.get_turnover_data(name, query_set, date)
-        order_count = query_set.filter(current_level_name=name).filter(datetime__year=date.year,datetime__month=date.month).count()
-        if order_count:
-            return math.ceil(turn_over / order_count)
+    def draw(self):
+        # brand option selection
+        select_brand_id = self.options.get('all_brand')
+        teamauth_brands = self.get_teamauth_brand_ids()
+        teamauth_brands = [brand['brand_id'] for brand in teamauth_brands]
+        date_start, date_end = self.get_date_range('time_range')
+        member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
+        if select_brand_id is None:
+            purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).filter(datetime__gte=date_start, datetime__lte=date_end).annotate(
+            current_level_name=Subquery(
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
+                )
+            )
+        elif select_brand_id != 'all':
+            purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(brand=select_brand_id).filter(datetime__gte=date_start, datetime__lte=date_end).annotate(
+            current_level_name=Subquery(
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
+                )
+            )
         else:
-            return 0
+            purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).filter(datetime__gte=date_start, datetime__lte=date_end).annotate(
+            current_level_name=Subquery(
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
+                )
+            )
+        # price count option
+        months_difference = rrule.rrule(rrule.MONTHLY, dtstart = date_start, until = date_end).count()
+        labels = []
+        dates_list = []
+        for diff_count in range(months_difference):
+            month_start = date_start + relativedelta(months=diff_count)
+            month_end = month_start + relativedelta(months=1)
+            dates_list.append(month_start)
+            labels.append(month_start.strftime('%Y/%m'))
+        self.set_labels(labels)
+        self.set_total(len(purchasebase_qs))
+        now = timezone.now()
 
-    def get_per_cus_price_data(self, name, query_set, date):
-        turn_over = self.get_turnover_data(name, query_set, date)
-        member_count = query_set.values('clientbase_id').filter(removed=False).distinct().filter(current_level_name=name).filter(datetime__year=date.year,datetime__month=date.month).count()
-        if member_count:
-            return math.ceil(turn_over / member_count)
+        for name in member_level:
+            data = []
+            for date in dates_list:
+                qs_result_dict = purchasebase_qs.filter(current_level_name=name).filter(datetime__year=date.year,datetime__month=date.month).aggregate(value=Count('clientbase_id'))
+                result = 0
+                if qs_result_dict.get('value'):
+                    result = qs_result_dict.get('value')
+                data.append(result)
+            self.notes.update({
+                    'tooltip_value': '{name} <br> {data} 元',
+                    'tooltip_name': ' '
+                })
+
+            self.create_label(name=name, data=data, notes=self.notes)
+
+@overview_charts.chart(name='交易等級人數直條圖(集團)')
+class PurchaseLevelMemverCount(BarChart):
+    def __init__(self):
+        super().__init__()
+        now = timezone.now()
+        self.add_options(time_range=DateRangeCondition('時間範圍').default(
+            (
+                (now - datetime.timedelta(days=90)).isoformat(),
+                now.isoformat()
+            )),
+        )
+
+
+    def init_user(self):
+        authedbrand_ids = []
+        brand_selection = DropDownCondition('全部品牌')
+
+        authed_brand_ids = self.get_teamauth_brand_ids()
+
+        brands = self.get_brand_data(authed_brand_ids)
+
+        if len(brands) == Brand.objects.filter(removed='False').count():
+            brands.append({'id': 'all', 'text': '全部品牌'})
+        if not brands:
+             brand_selection.choice(*brands).default('no brand')
         else:
-            return 0
+            brand_selection.choice(*brands).default(brands[0]['id'])
 
-    def get_data_router(self, name, option, query_set, date):
-        if option == self.TURNOVER:
-            return self.get_turnover_data(name, query_set, date)
-        elif option == self.AVGPRICE:
-            return self.get_avg_price_data(name, query_set, date)
-        elif option == self.PERCUSPRICE:
-            return self.get_per_cus_price_data(name, query_set, date)
+        self.add_options(all_brand=brand_selection)
 
+    def explain_x(self):
+        return ' '
+
+    def explain_y(self):
+        return '人數'
+
+    def get_teamauth_brand_ids(self):
+        teamauth = self.user.teamauth_set.filter(team=self.team).first()
+        if teamauth is None:
+            return []
+        enabled_brand_auths = teamauth.brandauth_set.filter(enabled=True)
+        authed_brand_ids = enabled_brand_auths.values_list('brand_id', flat=True).values('brand_id')
+        return authed_brand_ids
+
+    def get_brand_data(self, authed_brand_ids):
+        brand_data = []
+        brand_set = Brand.objects.filter(removed='False').filter(id__in=authed_brand_ids).values('id','name')
+        for item in brand_set:
+            id_name_map = {}
+            id_name_map['id'] = item['id']
+            id_name_map['text'] = item['name']
+            brand_data.append(id_name_map)
+        return brand_data
+
+    def get_per_date_list(self, start_date, end_date):
+        date_list = []
+        delta = end_date - start_date
+        for i in range(delta.days + 1):
+            date_list.append(start_date + datetime.timedelta(days=i))
+        return date_list
 
     def draw(self):
         # brand option selection
@@ -2499,7 +2575,6 @@ class PurchaseLevelTurnOver(BarChart):
         teamauth_brands = self.get_teamauth_brand_ids()
         teamauth_brands = [brand['brand_id'] for brand in teamauth_brands]
         date_start, date_end = self.get_date_range('time_range')
-        #result_qs = purchasebase_qs.filter(current_level_name__isnull=False).values('current_level_name','total_price').annotate(value=Count('id'))
         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
         if select_brand_id is None:
             purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).filter(datetime__gte=date_start, datetime__lte=date_end).annotate(
@@ -2536,14 +2611,15 @@ class PurchaseLevelTurnOver(BarChart):
         for name in member_level:
             data = []
             for date in dates_list:
-                result = self.get_data_router(name, select_option, purchasebase_qs, date)
-                data.append(result)
+                order_count = purchasebase_qs.filter(current_level_name=name).filter(datetime__year=date.year,datetime__month=date.month).count()
+                data.append(order_count)
             self.notes.update({
-                    'tooltip_value': '{name} <br> {data} 元',
+                    'tooltip_value': '{name} <br> {data} 單數',
                     'tooltip_name': ' '
                 })
 
             self.create_label(name=name, data=data, notes=self.notes)
+
 
 @overview_charts.chart(name='交易等級單數直條圖(集團)')
 class PurchaseLevelOrderCount(BarChart):
@@ -2612,7 +2688,6 @@ class PurchaseLevelOrderCount(BarChart):
         teamauth_brands = self.get_teamauth_brand_ids()
         teamauth_brands = [brand['brand_id'] for brand in teamauth_brands]
         date_start, date_end = self.get_date_range('time_range')
-        #result_qs = purchasebase_qs.filter(current_level_name__isnull=False).values('current_level_name','total_price').annotate(value=Count('id'))
         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
         if select_brand_id is None:
             purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).filter(datetime__gte=date_start, datetime__lte=date_end).annotate(
@@ -2658,59 +2733,329 @@ class PurchaseLevelOrderCount(BarChart):
 
             self.create_label(name=name, data=data, notes=self.notes)
 
-# @overview_charts.chart(name='RFM 分數等級人數直條圖')
-# class RFMLevelCountBar(BarChart):
-#     def __init__(self):
-#         super().__init__()
-#         now = timezone.now()
-#         self.add_options(time_range=DateRangeCondition('時間範圍').default(
-#             (
-#                 (now - datetime.timedelta(days=90)).isoformat(),
-#                 now.isoformat()
-#             )),
-#         )
+@overview_charts.chart(name='RFM 分數等級人數直條圖')
+class RFMLevelCountBar(BarChart):
+    def __init__(self):
+        super().__init__()
+        now = timezone.now()
+        self.add_options(time_range=DateRangeCondition('時間範圍').default(
+            (
+                (now - datetime.timedelta(days=90)).isoformat(),
+                now.isoformat()
+            )),
+        )
 
-#     def explain_y(self):
-#         return '人數'
+    def explain_y(self):
+        return '人數'
 
-#     def explain_x(self):
-#         return 'RFM分數'
+    def explain_x(self):
+        return 'RFM分數'
 
-#     def get_labels(self):
-#         return [num for num in range(1,16)]
+    def get_labels(self):
+        return [num for num in range(1,16)]
 
-#     def draw(self):
-#         date_start, date_end = self.get_date_range('time_range')
-#         # clients = self.team.clientbase_set.filter(removed=False)
-#         client_qs = self.team.clientbase_set.filter(removed=False).filter(datetime__gte=date_start, datetime__lte=date_end).annotate(
-#             current_level_name=Subquery(
-#                 LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
-#                 )
-#             )
-#         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
-#         self.set_total(client_qs.count())
-#         # rfm_total_qs = client_qs.all().values('id','rfm_total_score', 'current_level_name')
+    def draw(self):
+        now = timezone.now()
+        date_start, date_end = self.get_date_range('time_range')
+        purchase_cli_id = PurchaseBase.objects.filter(removed=False).filter(datetime__gte=date_start, datetime__lte=date_end).values_list('clientbase_id',flat=True)
+        client_qs = self.team.clientbase_set.filter(removed=False).filter(id__in=list(purchase_cli_id)).annotate(
+            current_level_name=Subquery(
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__lt=now).order_by('-from_datetime').values('to_level__name')[:1]
+            )
+        )
+        member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
 
-#         labels = [num for num in range(1,16)]
-#         for name in member_level:
-#             client_qs = client_qs.filter(current_level_name=name).values('id','rfm_total_score', 'current_level_name')
-#             data = [0] * 15
-#             tooltip_title = []
-#             for label in labels:
-#                 label_str = '分數 ' + f'{label}'
-#                 tooltip_title.append(label_str)
+        labels = [num for num in range(1,16)]
+        for name in member_level:
+            result_qs = client_qs.filter(current_level_name=name).values('id','rfm_total_score', 'current_level_name')
+            data = [0] * 15
+            tooltip_title = []
+            for label in labels:
+                label_str = '分數 ' + f'{label}'
+                tooltip_title.append(label_str)
 
-#             for rfm_data in client_qs:
-#                 if rfm_data['rfm_total_score'] != 0:
-#                     data[rfm_data['rfm_total_score']] += 1
+            for rfm_data in result_qs:
+                if rfm_data['rfm_total_score'] != 0:
+                    data[rfm_data['rfm_total_score']] += 1
 
-#             self.notes.update({
-#                     'tooltip_title': tooltip_title,
-#                     'tooltip_value': '{name} <br> {data} 人',
-#                     'tooltip_name': ' '
-#                 })
+            self.notes.update({
+                    'tooltip_title': tooltip_title,
+                    'tooltip_value': '{name} <br> {data} 人',
+                    'tooltip_name': ' '
+                })
 
-#             self.create_label(data=data, notes=self.notes)
+            self.create_label(data=data, notes=self.notes)
+
+@overview_charts.chart(name='交易等級回購人數直條圖')
+class RepurchaseLevelMemCountBar(BarChart):
+    def __init__(self):
+        super().__init__()
+        now = timezone.now()
+        self.add_options(time_range=DateRangeCondition('時間範圍').default(
+            (
+                (now - datetime.timedelta(days=90)).isoformat(),
+                now.isoformat()
+            )
+        ))
+
+    def get_per_date_list(self, start_date, end_date):
+        date_list = []
+        delta = end_date - start_date
+        for i in range(delta.days + 1):
+            date_list.append(start_date + datetime.timedelta(days=i))
+        return date_list
+
+    def explain_x(self):
+        return '回購頻率'
+
+    def explain_y(self):
+        return '人數'
+
+    def draw(self):
+        purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        date_start, date_end = self.get_date_range('time_range')
+        self.set_total(len(purchase_base_set))
+        labels = ['首購', '第一次回購', '第二次回購', '第三次回購', '第四次回購', '大於四次回購']
+        self.set_labels(labels)
+        now = timezone.now()
+        dict_data = []
+        value_data = []
+        purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(datetime__gte=date_start, datetime__lte=date_end).annotate(
+            current_level_name=Subquery(
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
+                )
+            )
+        member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
+        order_member_count = purchasebase_qs.filter(datetime__lte=date_end, datetime__gte=date_start).values('clientbase_id').annotate(value=Count('clientbase_id'))
+        for level in member_level:
+            data = [0]*len(labels)
+            order_member_count = purchasebase_qs.filter(current_level_name=level).filter(datetime__lte=date_end, datetime__gte=date_start).values('clientbase_id').annotate(value=Count('clientbase_id'))
+            if order_member_count:
+                for count_data in order_member_count:
+                    dict_data.append(count_data['clientbase_id'])
+                    value_data.append(count_data['value'])
+                    if count_data['value'] == 1:
+                        data[0] += 1
+                    elif count_data['value'] == 2:
+                        data[1] += 1
+                    elif count_data['value'] == 3:
+                        data[2] += 1
+                    elif count_data['value'] == 4:
+                        data[3] += 1
+                    elif count_data['value'] == 5:
+                        data[4] += 1
+                    else:
+                        data[5] += 1
+
+            self.notes.update({
+                    'tooltip_value': f'{{data}} 人<br> 佔會員比例: {{percentage}}%',
+                    'tooltip_name': ' '
+                })
+
+            self.create_label(name=level,data=data, notes=self.notes)
+
+@overview_charts.chart(name='交易等級回購天數直條圖')
+class RepurchaseLevelDayCountBar(BarChart):
+    def __init__(self):
+        super().__init__()
+        now = timezone.now()
+        self.add_options(time_range=DateRangeCondition('時間範圍').default(
+            (
+                (now - datetime.timedelta(days=90)).isoformat(),
+                now.isoformat()
+            )
+        ))
+        level_selection = DropDownCondition('等級')
+        member_level = MemberLevelBase.objects.values('id','name')
+        level_data = []
+        if member_level:
+            for item in member_level:
+                id_name_map = {}
+                id_name_map['id'] = item['id']
+                id_name_map['text'] = item['name']
+                level_data.append(id_name_map)
+        if len(level_data) != 0:
+            level_selection.choice(*level_data).default(level_data[0]['id'])
+            self.add_options(levels=level_selection)
+        else:
+            level_selection.choice({'id': 'no_levels', 'text': '-'}).default('no_levels')
+
+    def get_labels(self):
+        return['第一次回購', '第二次回購', '第三次回購', '第四次回購', '大於四次回購']
+
+    def get_per_date_list(self, start_date, end_date):
+        date_list = []
+        delta = end_date - start_date
+        for i in range(delta.days + 1):
+            date_list.append(start_date + datetime.timedelta(days=i))
+        return date_list
+
+    def explain_y(self):
+        return '天數'
+
+    def explain_x(self):
+        return '回購頻率'
+
+    def draw(self):
+        level = self.options.get('levels')
+        date_start, date_end = self.get_date_range('time_range')
+        tooltip_titles = ['第一次回購', '第二次回購', '第三次回購', '第四次回購', '大於四次回購']
+        day_data = [0]*len(tooltip_titles)
+        data_member_count = [0] * len(tooltip_titles)
+        now = timezone.now()
+        per_data_count = {}
+        purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(datetime__gte=date_start, datetime__lte=date_end).annotate(
+            current_level_name=Subquery(
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
+                )
+            )
+        if level != '-':
+            purchasebase_qs.filter(current_level_name=level)
+        self.set_total(len(purchasebase_qs))
+        perchase_data = purchasebase_qs.values('clientbase_id','datetime')
+        for per_data in perchase_data:
+            per_data_count[per_data['clientbase_id']] = per_data_count.get(per_data['clientbase_id'], 0) + 1
+            if per_data_count.get(per_data['clientbase_id']) == 2:
+                day_data[0] += (now - per_data['datetime']).days
+                data_member_count[0] += 1
+            elif per_data_count.get(per_data['clientbase_id']) == 3:
+                day_data[1] += (now - per_data['datetime']).days
+                data_member_count[1] += 1
+            elif per_data_count.get(per_data['clientbase_id']) == 4:
+                day_data[2] += (now - per_data['datetime']).days
+                data_member_count[2] += 1
+            elif per_data_count.get(per_data['clientbase_id']) == 5:
+                day_data[3] += (now - per_data['datetime']).days
+                data_member_count[3] += 1
+            else:
+                day_data[4] += (now - per_data['datetime']).days
+                data_member_count[4] += 1
+        f_data_member_count = [1 for count in data_member_count if count == 0]
+        data = [math.ceil(day / count) for day, count in zip(day_data, f_data_member_count)]
+        self.notes.update({
+            'tooltip_value': f'{{data}} 天 ',
+            'tooltip_name': ' '
+        })
+
+        self.create_label(data=data, notes=self.notes)
+@past_charts.chart(name='交易金額等級往期直條圖')
+class PurchaseLevelPurchaseCount(BarChart):
+    TURNOVER = 'turnover'
+    PERCUSPRICE = 'per_cus_price'
+    AVGPRICE = 'avg_price'
+    '''
+    Hidden options:
+        -trace_days:
+            format: []
+            default: [365, 30, 7, 1]
+            explain: determine datetime points of x-axis.
+    '''
+    def __init__(self):
+        super().__init__()
+        self.trace_days = [365, 30, 7, 1]
+        self.add_options(
+            select_option=ModeCondition('').choice(
+                {'id': self.TURNOVER, 'text': '營業額'},
+                {'id': self.PERCUSPRICE, 'text': '客單價'},
+                {'id': self.AVGPRICE, 'text': '平均金額'},
+            ).default(self.TURNOVER)
+        )
+        level_selection = DropDownCondition('等級')
+        member_level = MemberLevelBase.objects.values('id','name')
+        level_data = []
+        if member_level:
+            for item in member_level:
+                id_name_map = {}
+                id_name_map['id'] = item['id']
+                id_name_map['text'] = item['name']
+                level_data.append(id_name_map)
+        if len(level_data) != 0:
+            level_selection.choice(*level_data).default(level_data[0]['id'])
+            self.add_options(levels=level_selection)
+        else:
+            level_selection.choice({'id': 'no_levels', 'text': '-'}).default('no_levels')
+    def explain_y(self):
+        return '金額'
+
+    def explain_x(self):
+        return '時間'
+
+    def get_total_price_sum(self, query_set, date):
+        return query_set.aggregate(Sum('total_price'))
+
+    def filter_date(self, query_set, date):
+        return query_set.filter(removed='False').filter(datetime__lt=date)
+
+    def get_turnover_data(self, query_set, date):
+        qs_result_dict =  query_set.filter(datetime__lt=date).aggregate(Sum('total_price'))
+        return qs_result_dict.get('total_price__sum', 0)
+
+    def get_avg_price_data(self, query_set, date):
+        turn_over = self.get_turnover_data(query_set, date)
+        order_count = query_set.filter(datetime__lt=date).count()
+        if order_count:
+            return math.ceil(turn_over / order_count)
+        else:
+            return 0
+
+    def get_per_cus_price_data(self, query_set, date):
+        turn_over = self.get_turnover_data(query_set, date)
+        member_count = query_set.values('clientbase_id').distinct().filter(datetime__lt=date).count()
+        if member_count:
+            return math.ceil(turn_over / member_count)
+        else:
+            return 0
+
+    def get_data_router(self, option, query_set, date):
+        if option == self.TURNOVER:
+            return self.get_turnover_data(query_set, date)
+        elif option == self.AVGPRICE:
+            return self.get_avg_price_data(query_set, date)
+        elif option == self.PERCUSPRICE:
+            return self.get_per_cus_price_data(query_set, date)
+
+    def get_labels(self):
+        labels = []
+        for days in self.trace_days:
+            labels.append(f'{days} 天前')
+        return labels
+
+    def get_labels_info(self):
+        labels = []
+        for days in self.trace_days:
+            now = timezone.now()
+            date_string = (now - datetime.timedelta(days=days)).strftime('%Y 年 %m 月 %d 日')
+            labels.append(date_string)
+        return labels
+
+    def get_id_level_map(self, member_level):
+        return {level['id']:level['name'] for level in member_level}
+
+    def draw(self):
+        member_level = MemberLevelBase.objects.values('id','name')
+        level = self.options.get('levels')
+        id_level_map = self.get_id_level_map(member_level)
+        self.trace_days = self.options.get('trace_days', self.trace_days)
+        data = []
+        now = timezone.now()
+        purchasebase_qs = PurchaseBase.objects.filter(removed=False).annotate(
+            current_level_name=Subquery(
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+                )
+            )
+        if level != 'no_levels':
+            purchasebase_qs = purchasebase_qs.filter(current_level_name=id_level_map[int(level)])
+        print('purchasebase_qs2: ', purchasebase_qs)
+        select_option = self.options.get('select_option','')
+        for days in self.trace_days:
+            date = now - datetime.timedelta(days=days)
+            result = self.get_data_router(select_option,purchasebase_qs, date)
+            data.append(result)
+        notes = {
+            'tooltip_value': '{data} 元'
+        }
+
+        self.create_label(name='', data=data, notes=notes)
 
 
 
@@ -2769,6 +3114,10 @@ class LevelsPurchase:
        PurchaseLevelOrderBar.preset('交易等級單數直條圖'),
        PurchaseLevelCusPriceRange.preset('交易等級客單價區間單數直條圖', width='full'),
        PurchaseLevelTurnOver.preset('交易等級營業額直條圖(集團)', width='full'),
+       PurchaseLevelMemverCount.preset('交易等級人數直條圖(集團)', width='full'),
        PurchaseLevelOrderCount.preset('交易等級單數直條圖(集團)', width='full'),
-    #    RFMLevelCountBar.preset('RFM 分數等級人數直條圖', width='full'),
+       RFMLevelCountBar.preset('RFM 分數等級人數直條圖', width='full'),
+       RepurchaseLevelMemCountBar.preset('交易等級回購人數直條圖'),
+       RepurchaseLevelDayCountBar.preset('交易等級回購人數直條圖'),
+       PurchaseLevelPurchaseCount.preset('交易金額等級往期直條圖'),
     ]
