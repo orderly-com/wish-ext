@@ -144,6 +144,12 @@ class LevelUpMatrMatrix(MatrixChart):
 
 @overview_charts.chart(name='等級即將到期直條圖')
 class FutureLevelDue(BarChart):
+    def explain_x(self):
+        return ' '
+
+    def explain_y(self):
+        return '人數'
+
     def draw(self):
         now = timezone.now()
         client_qs = self.team.clientbase_set.filter(removed=False)
@@ -209,6 +215,12 @@ class LevelClientCountTracing(BarChart):
         super().__init__()
         self.trace_days = [365, 30, 7, 1]
 
+    def explain_x(self):
+        return '時間'
+
+    def explain_y(self):
+        return '人數'
+
     def get_labels(self):
         labels = []
         for days in self.trace_days:
@@ -257,6 +269,13 @@ class MemberLevelTrend(LineChart):
                 now.isoformat()
             )
         ))
+
+    def explain_x(self):
+        return ' '
+
+    def explain_y(self):
+        return '人數'
+
     def get_per_date_list(self, start_date, end_date):
         date_list = []
         delta = end_date - start_date
@@ -289,7 +308,7 @@ class MemberLevelTrend(LineChart):
 
             self.create_label(name=name, data=data, notes=self.notes)
 
-@trend_charts.chart(name='等級即將到期趨勢折線圖')
+@trend_charts.chart(name='等級即將到期折線圖')
 class FutureLevelDueTrend(LineChart):
     def __init__(self):
         super().__init__()
@@ -304,6 +323,13 @@ class FutureLevelDueTrend(LineChart):
                 )
             )
         )
+
+    def explain_x(self):
+        return ' '
+
+    def explain_y(self):
+        return '人數'
+
     def get_month_count(self, date_start, date_end):
         year_begin, year_end = date_start.year, date_end.year
         month_begin, month_end = date_start.month, date_end.month
@@ -1585,7 +1611,7 @@ class PurchaseOrderCount(BarChart):
             purchase_base = purchase_base_set.filter(datetime__lt=date)
             data.append(purchase_base.count())
         notes = {
-            'tooltip_value': f'{{data}} 人'
+            'tooltip_value': f'{{data}} 單'
         }
 
         self.create_label(name=' ', data=data, notes=notes)
@@ -2698,7 +2724,7 @@ class Levels:
         FutureLevelDue.preset('等級即將到期直條圖', width='full'),
         LevelClientCountTracing.preset('等級人數往期直條圖'),
         MemberLevelTrend.preset('等級人數折線圖', width='full'),
-        FutureLevelDueTrend.preset('等級即將到期趨勢折線圖', width='full')
+        FutureLevelDueTrend.preset('等級即將到期折線圖', width='full')
     ]
 
 GROUP_MEMBER_ORDERS = '會員交易指標'
