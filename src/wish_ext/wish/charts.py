@@ -168,7 +168,7 @@ class FutureLevelDue(BarChart):
             for level_id, name in levels:
                 labels = []
                 data = []
-                for i in range(12):
+                for i in range(6):
                     month_start = date_start + relativedelta(months=i)
                     month_end = month_start + relativedelta(months=1)
                     labels.append(month_start.strftime('%Y/%m'))
@@ -186,7 +186,7 @@ class FutureLevelDue(BarChart):
         else:
             labels = []
             data = []
-            for i in range(12):
+            for i in range(6):
                 month_start = date_start + relativedelta(months=i)
                 month_end = month_start + relativedelta(months=1)
                 labels.append(month_start.strftime('%Y/%m'))
@@ -330,11 +330,11 @@ class FutureLevelDueTrend(LineChart):
         now = timezone.now()
         self.add_options(
             time_range=DateRangeCondition('時間範圍')
-            .config(max_date=(now + datetime.timedelta(days=365)).isoformat())
+            .config(max_date=(now + datetime.timedelta(days=180)).isoformat())
             .default(
                 (
                     now.isoformat(),
-                    (now + datetime.timedelta(days=90)).isoformat()
+                    (now + datetime.timedelta(days=180)).isoformat()
                 )
             )
         )
