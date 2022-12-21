@@ -2897,7 +2897,6 @@ class RepurchaseLevelMemCountBar(BarChart):
         return '人數'
 
     def draw(self):
-        purchase_base_set = PurchaseBase.objects.filter(removed=False)
         date_start, date_end = self.get_date_range('time_range')
         self.set_total(len(purchase_base_set))
         labels = ['首購', '第一次回購', '第二次回購', '第三次回購', '第四次回購', '大於四次回購']
@@ -2983,6 +2982,9 @@ class RepurchaseLevelDayCountBar(BarChart):
     def explain_x(self):
         return '回購頻率'
 
+    def get_id_level_map(self, member_level):
+        return {level['id']:level['name'] for level in member_level}
+
     def draw(self):
         level = self.options.get('levels')
         date_start, date_end = self.get_date_range('time_range')
@@ -2996,13 +2998,15 @@ class RepurchaseLevelDayCountBar(BarChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
+        member_level = MemberLevelBase.objects.values('id','name')
+        id_level_map = self.get_id_level_map(member_level)
+        if level != 'no_levels':
+            purchasebase_qs = purchasebase_qs.filter(current_level_name=id_level_map[int(level)])
         if not purchasebase_qs.exists():
             raise NoData('資料不足')
-        if level != 'no_levels':
-            purchasebase_qs.filter(current_level_name=level)
         self.set_total(len(purchasebase_qs))
-        perchase_data = purchasebase_qs.values('clientbase_id','datetime')
-        for per_data in perchase_data:
+        purchase_data = purchasebase_qs.values('clientbase_id','datetime')
+        for per_data in purchase_data:
             per_data_count[per_data['clientbase_id']] = per_data_count.get(per_data['clientbase_id'], 0) + 1
             if per_data_count.get(per_data['clientbase_id']) == 2:
                 day_data[0] += (now - per_data['datetime']).days
@@ -3686,7 +3690,7 @@ class LevelsPurchase:
        PurchaseLevelOrderCount.preset('交易等級單數直條圖(集團)', width='full'),
        RFMLevelCountBar.preset('RFM 分數等級人數直條圖', width='full'),
        RepurchaseLevelMemCountBar.preset('交易等級回購人數直條圖'),
-       RepurchaseLevelDayCountBar.preset('交易等級回購人數直條圖'),
+       RepurchaseLevelDayCountBar.preset('交易等級回購天數直條圖'),
        PurchaseLevelPurchaseCount.preset('交易金額等級往期直條圖'),
        PurchaseLevelMemberCount.preset('交易等級人數往期直條圖'),
        PurchaseLevelOrderTrend.preset('交易等級單數往期直條圖'),
