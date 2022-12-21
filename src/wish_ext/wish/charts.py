@@ -2898,7 +2898,6 @@ class RepurchaseLevelMemCountBar(BarChart):
 
     def draw(self):
         date_start, date_end = self.get_date_range('time_range')
-        self.set_total(len(purchase_base_set))
         labels = ['首購', '第一次回購', '第二次回購', '第三次回購', '第四次回購', '大於四次回購']
         self.set_labels(labels)
         now = timezone.now()
