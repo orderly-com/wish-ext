@@ -831,6 +831,9 @@ class PurchaseNumberBar(BarChart):
         for date in dates_list:
             result = self.get_data_router(select_option, purchase_base_set, date)
             data.append(result)
+        data_check = set(data)
+        if data_check == {0} or data_check == {None}:
+            raise NoData('尚無資料')
         self.notes.update({
                 'tooltip_value': '交易金額 <br> {data} 元',
                 'tooltip_name': ' '
@@ -1341,6 +1344,10 @@ class RepurchaseMemCountBar(BarChart):
 
         self.create_label(data=data, notes=self.notes)
 
+        data_check = set(data)
+        if data_check == {0} or data_check == {None}:
+            raise NoData('尚無資料')
+
 @overview_charts.chart(name='交易回購天數直條圖')
 class RepurchaseDayCountBar(BarChart):
     def __init__(self):
@@ -1400,6 +1407,9 @@ class RepurchaseDayCountBar(BarChart):
                 data_member_count[4] += 1
         f_data_member_count = [1 for count in data_member_count if count == 0]
         data = [math.ceil(day / count) for day, count in zip(day_data, f_data_member_count)]
+        data_check = set(data)
+        if data_check == {0} or data_check == {None}:
+            raise NoData('尚無資料')
 
         self.notes.update({
             'tooltip_value': f'{{data}} 天 ',
@@ -1436,12 +1446,13 @@ class NESLHorBar(HorizontalBarChart):
         date_range_in_ne_group = [(date_end - datetime.timedelta(days=90)), date_end]
         date_range_in_sl_group = [(date_end - datetime.timedelta(days=365)), date_end - datetime.timedelta(days=120)]
         purchase_set = PurchaseBase.objects.filter(removed=False)
-        if not purchase_set.exists():
-            raise NoData('尚無資料')
         # get NE group data in range
         purchasebase_ne_group=purchase_set.filter(datetime__lte=date_range_in_ne_group[1], datetime__gte=date_range_in_ne_group[0])
         # get SL group data in range
         purchasebase_sl_group=purchase_set.filter(datetime__lte=date_range_in_sl_group[1], datetime__gte=date_range_in_sl_group[0])
+
+        if not purchasebase_ne_group.exists() and not purchasebase_sl_group.exists():
+            raise NoData('尚無資料')
         # get all NE group clients id
         purchasebase_ne_group_cli_id = purchasebase_ne_group.values_list('clientbase_id',flat=True)
         # get all SL group
@@ -1885,6 +1896,9 @@ class PurchasePriceTrend(LineChart):
         for date in date_list:
             result = self.get_data_router(select_option, purchase_base_qs, date)
             data.append(result)
+        data_check = set(data)
+        if data_check == {0} or data_check == {None}:
+            raise NoData('尚無資料')
         self.notes.update({
                 'tooltip_value': '{data} 元',
                 'tooltip_name': ' '
@@ -1976,6 +1990,11 @@ class PurchaseMemberTrend(LineChart):
         for date in date_list:
             order_member = purchase_base_set.filter(removed=False).values('clientbase_id').distinct().filter(datetime__date=date.date())
             data.append(order_member.count())
+
+        data_check = set(data)
+        if data_check == {0} or data_check == {None}:
+            raise NoData('尚無資料')
+
         self.notes.update({
                 'tooltip_value': '{data} 人',
                 'tooltip_name': ' '
@@ -2066,6 +2085,11 @@ class PurchaseOrderTrend(LineChart):
         for date in date_list:
             purchase_base = purchase_base_set.filter(datetime__date=date.date())
             data.append(purchase_base.count())
+
+        data_check = set(data)
+        if data_check == {0} or data_check == {None}:
+            raise NoData('尚無資料')
+
         self.notes.update({
                 'tooltip_value': '{data} 單',
                 'tooltip_name': ' '
@@ -2214,63 +2238,63 @@ class PurchaseLevelBar(BarChart):
 
         self.create_label(data=pre_data, notes=self.notes)
 
-@overview_charts.chart(name='交易等級金額累計圖')
-class PurchaseLevelHorBar(HorizontalBarChart):
-    def __init__(self):
-        super().__init__()
-        now = timezone.now()
-        self.add_options(time_range=DateRangeCondition('時間範圍').default(
-            (
-                (now - datetime.timedelta(days=90)).isoformat(),
-                now.isoformat()
-            )
-        ))
+# @overview_charts.chart(name='交易等級金額累計圖')
+# class PurchaseLevelHorBar(HorizontalBarChart):
+#     def __init__(self):
+#         super().__init__()
+#         now = timezone.now()
+#         self.add_options(time_range=DateRangeCondition('時間範圍').default(
+#             (
+#                 (now - datetime.timedelta(days=90)).isoformat(),
+#                 now.isoformat()
+#             )
+#         ))
 
-    def explain_y(self):
-        return '金額'
+#     def explain_y(self):
+#         return '金額'
 
-    def explain_x(self):
-        return '會員類型'
+#     def explain_x(self):
+#         return '會員類型'
 
 
-    def get_level_map(self, levels):
-        return {level:index for index, level in enumerate(levels)}
+#     def get_level_map(self, levels):
+#         return {level:index for index, level in enumerate(levels)}
 
-    def draw(self):
-        now = timezone.now()
-        date_start, date_end = self.get_date_range('time_range')
-        purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(datetime__gte=date_start, datetime__lte=date_end).annotate(
-            current_level_name=Subquery(
-                LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
-                )
-            )
-        if not purchasebase_qs.exists():
-            raise NoData('資料不足')
-        purchasebase_qs = purchasebase_qs.filter(current_level_name__isnull=False).values('current_level_name').annotate(total_price_sum=Sum('total_price'))
-        member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
-        pre_data = [0] * len(member_level)
-        self.set_labels(member_level)
-        level_index_map = self.get_level_map(member_level)
-        for per_data in purchasebase_qs:
-            temp_value = pre_data[level_index_map[per_data['current_level_name']]]
-            temp_value += per_data['total_price_sum']
-            pre_data[level_index_map[per_data['current_level_name']]] = temp_value
+#     def draw(self):
+#         now = timezone.now()
+#         date_start, date_end = self.get_date_range('time_range')
+#         purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(datetime__gte=date_start, datetime__lte=date_end).annotate(
+#             current_level_name=Subquery(
+#                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
+#                 )
+#             )
+#         if not purchasebase_qs.exists():
+#             raise NoData('資料不足')
+#         purchasebase_qs = purchasebase_qs.filter(current_level_name__isnull=False).values('current_level_name').annotate(total_price_sum=Sum('total_price'))
+#         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
+#         pre_data = [0] * len(member_level)
+#         self.set_labels(member_level)
+#         level_index_map = self.get_level_map(member_level)
+#         for per_data in purchasebase_qs:
+#             temp_value = pre_data[level_index_map[per_data['current_level_name']]]
+#             temp_value += per_data['total_price_sum']
+#             pre_data[level_index_map[per_data['current_level_name']]] = temp_value
 
-        data = []
-        last_data = 0
-        for index, per_data in enumerate(pre_data):
-            if index != 0:
-                total = last_data + per_data
-                data.append([last_data, total])
-            else:
-                data.append([0, per_data])
-            last_data = per_data
+#         data = []
+#         last_data = 0
+#         for index, per_data in enumerate(pre_data):
+#             if index != 0:
+#                 total = last_data + per_data
+#                 data.append([last_data, total])
+#             else:
+#                 data.append([0, per_data])
+#             last_data = per_data
 
-        notes = {
-            'tooltip_value': '{data} 元',
-            'tooltip_name': ' '
-        }
-        self.create_label(data=data, notes=notes)
+#         notes = {
+#             'tooltip_value': '{data} 元',
+#             'tooltip_name': ' '
+#         }
+#         self.create_label(data=data, notes=notes)
 
 @overview_charts.chart(name='交易等級人數直條圖')
 class PurchaseLevelCountBar(BarChart):
@@ -2572,6 +2596,7 @@ class PurchaseLevelTurnOver(BarChart):
         self.set_total(len(purchasebase_qs))
         now = timezone.now()
 
+        data_check = []
         for name in member_level:
             data = []
             for date in dates_list:
@@ -2584,8 +2609,16 @@ class PurchaseLevelTurnOver(BarChart):
                     'tooltip_value': '{name} <br> {data} 元',
                     'tooltip_name': ' '
                 })
+            data_check.append(set(data))
 
             self.create_label(name=name, data=data, notes=self.notes)
+
+        data_check_count = 0
+        for d_check in data_check:
+            if d_check == {0} or d_check == {None}:
+                data_check_count += 1
+        if data_check_count == len(data_check):
+            raise NoData('資料不足')
 
 @overview_charts.chart(name='交易等級人數直條圖(集團)')
 class PurchaseLevelMemverCount(BarChart):
@@ -3400,6 +3433,7 @@ class PurchaseLevelPriceTrend(LineChart):
         self.set_date_range(date_start, date_end)
         select_option = self.options.get('select_option','')
         self.set_total(len(purchasebase_qs))
+        data_check = []
         for level in member_level:
             data = []
             for date in date_list:
@@ -3409,8 +3443,16 @@ class PurchaseLevelPriceTrend(LineChart):
                     'tooltip_value': '{name} {data} 元',
                     'tooltip_name': ' '
                 })
+            data_check.append(set(data))
 
             self.create_label(name=level,data=data, notes=self.notes)
+
+        data_check_count = 0
+        for d_check in data_check:
+            if d_check == {0} or d_check == {None}:
+                data_check_count += 1
+        if data_check_count == len(data_check):
+            raise NoData('資料不足')
 
 @trend_charts.chart(name='交易等級人數折線圖(集團)')
 class PurchaseLevelMemberTrend(LineChart):
@@ -3508,6 +3550,7 @@ class PurchaseLevelMemberTrend(LineChart):
         self.set_date_range(date_start, date_end)
         select_option = self.options.get('select_option','')
         self.set_total(len(purchasebase_qs))
+        data_check = []
         for level in member_level:
             data = []
             for date in date_list:
@@ -3517,8 +3560,15 @@ class PurchaseLevelMemberTrend(LineChart):
                     'tooltip_value': '{name} {data} 人',
                     'tooltip_name': ' '
                 })
+            data_check.append(set(data))
 
             self.create_label(name=level,data=data, notes=self.notes)
+        data_check_count = 0
+        for d_check in data_check:
+            if d_check == {0} or d_check == {None}:
+                data_check_count += 1
+        if data_check_count == len(data_check):
+            raise NoData('資料不足')
 
 @trend_charts.chart(name='交易等級單數折線圖(集團)')
 class PurchaseLevelOrderCountTrend(LineChart):
@@ -3586,7 +3636,6 @@ class PurchaseLevelOrderCountTrend(LineChart):
         return date_list
 
     def draw(self):
-        # brand option selection
         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
         select_brand_id = self.options.get('all_brand')
         teamauth_brands = self.get_teamauth_brand_ids()
@@ -3616,6 +3665,7 @@ class PurchaseLevelOrderCountTrend(LineChart):
         self.set_date_range(date_start, date_end)
         select_option = self.options.get('select_option','')
         self.set_total(len(purchasebase_qs))
+        data_check = []
         for level in member_level:
             data = []
             for date in date_list:
@@ -3626,7 +3676,16 @@ class PurchaseLevelOrderCountTrend(LineChart):
                     'tooltip_name': ' '
                 })
 
+            data_check.append(set(data))
+
             self.create_label(name=level,data=data, notes=self.notes)
+
+        data_check_count = 0
+        for d_check in data_check:
+            if d_check == {0} or d_check == {None}:
+                data_check_count += 1
+        if data_check_count == len(data_check):
+            raise NoData('資料不足')
 
 
 
