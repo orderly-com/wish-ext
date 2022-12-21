@@ -38,7 +38,7 @@ class MemberLevelPieChart(PieChart):
         now = timezone.now()
         clients = self.team.clientbase_set.filter(removed=False)
         if not clients.exists():
-            raise NoData('資料不足')
+            raise NoData('尚無資料')
         client_qs = clients.annotate(
             current_level_name=Subquery(
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__lt=now).order_by('-from_datetime').values('to_level__name')[:1]
@@ -239,6 +239,8 @@ class LevelClientCountTracing(BarChart):
         self.trace_days = self.options.get('trace_days', self.trace_days)
         now = timezone.now()
         client_qs = self.team.clientbase_set.filter(removed=False)
+        if not client_qs.exists():
+            raise NoData('資料不足')
         self.set_total(len(client_qs))
         levels = MemberLevelBase.objects.filter(removed=False).order_by('rank').values_list('id', 'name')
         for level_id, name in levels:
@@ -265,7 +267,7 @@ class MemberLevelTrend(LineChart):
         now = timezone.now()
         self.add_options(time_range=DateRangeCondition('時間範圍').default(
             (
-                (now - datetime.timedelta(days=30)).isoformat(),
+                (now - datetime.timedelta(days=90)).isoformat(),
                 now.isoformat()
             )
         ))
@@ -285,11 +287,14 @@ class MemberLevelTrend(LineChart):
 
     def draw(self):
         client_qs = self.team.clientbase_set.filter(removed=False)
+        if not client_qs.exists():
+            raise NoData('資料不足')
         date_start, date_end = self.get_date_range('time_range')
         date_list = self.get_per_date_list(date_start, date_end)
         self.set_date_range(date_start, date_end)
         self.set_total(len(client_qs))
         levels = MemberLevelBase.objects.filter(removed=False).order_by('rank').values_list('id', 'name')
+        check_data = []
         for level_id, name in levels:
             data = []
             for date in date_list:
@@ -306,7 +311,17 @@ class MemberLevelTrend(LineChart):
                 'tooltip_name': ' '
             })
 
+            check_data.append(set(data))
+
             self.create_label(name=name, data=data, notes=self.notes)
+
+        no_data_count = 0
+        for data in check_data:
+            if data == {0} or data == {None}:
+                no_data_count += 1
+
+        if no_data_count == len(check_data):
+            raise NoData('資料不足')
 
 @trend_charts.chart(name='等級即將到期折線圖')
 class FutureLevelDueTrend(LineChart):
@@ -353,8 +368,11 @@ class FutureLevelDueTrend(LineChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level_id')[:1]
             )
         )
+        if not client_qs.exists():
+            raise NoData('資料不足')
 
         levels = MemberLevelBase.objects.filter(removed=False).values_list('id', 'name')
+        check_data = []
         for level_id, name in levels:
             labels = []
             data = []
@@ -370,8 +388,17 @@ class FutureLevelDueTrend(LineChart):
                 'tooltip_value': '{name}: {data} 人',
                 'tooltip_name': ' '
             }
+            check_data.append(set(data))
 
             self.create_label(name=name, data=data, notes=notes)
+
+        no_data_count = 0
+        for data in check_data:
+            if data == {0} or data == {None}:
+                no_data_count += 1
+
+        if no_data_count == len(check_data):
+            raise NoData('資料不足')
 
 @overview_charts.chart(name='會員交易指標')
 class PurchaseIndicators(TextArea):
@@ -437,6 +464,8 @@ class AvgPerMemberCard(DataCard):
     icon = 'licon-coin'
     def draw(self):
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        if not purchase_base_set.exists():
+            raise NoData('資料不足')
         qs_result_dict =  purchase_base_set.aggregate(Sum('total_price'))
         turnover = qs_result_dict.get('total_price__sum', 0)
         if turnover is None:
@@ -461,7 +490,6 @@ class PurchaseTimeHeatMap(HeatMapChart):
         self.x_values = ['01:00', '02:00', '03:00', '04:00','05:00','06:00', '07:00', '08:00', '09:00', '10:00', \
             '11:00', '12:00','13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', \
                 '21:00','22:00', '23:00', '24:00']
-        # self.y_values = ['週一', '週二', '週三', '週四', '週五', '週六', '週日']
         self.y_values = ['週日', '週六', '週五', '週四', '週三', '週二', '週一']
         self.add_options(time_range=DateRangeCondition('時間範圍').default(
             (
@@ -556,8 +584,12 @@ class PurchaseTimeHeatMap(HeatMapChart):
         data_options = self.options.get('data_options','')
         date_start, date_end = self.get_date_range('time_range')
         purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(datetime__gte=date_start, datetime__lte=date_end)
+        if not purchasebase_qs.exists():
+            raise NoData('尚無資料')
         if data_options:
             purchasebase_qs = self.data_router(purchasebase_qs, data_options)
+            if not purchasebase_qs.exists():
+                raise NoData('尚無資料')
         f_data = {}
         for x in self.x_values:
             for y in self.y_values:
@@ -653,6 +685,8 @@ class AvgPerMemberRange(BarChart):
         maximum = self.options.get('max', 20000)
         data = [0] * int((maximum-minimum) / step + 1)
         per_purchase_set = purchase_set.all().values('total_price').annotate(count=Count('id'))
+        if not per_purchase_set.exists():
+            raise NoData('尚無資料')
         for per_data in per_purchase_set:
             index = get_bin_index(per_data['total_price'])
             data[index] += per_data['count']
@@ -778,6 +812,8 @@ class PurchaseNumberBar(BarChart):
             purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand=select_brand_id).filter(datetime__lte=date_end, datetime__gte=date_start)
         else:
             purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).filter(datetime__lte=date_end, datetime__gte=date_start)
+        if not purchase_base_set.exists():
+            raise NoData('尚無資料')
         # price count option
         months_difference = rrule.rrule(rrule.MONTHLY, dtstart = date_start, until = date_end).count()
         labels = []
@@ -875,6 +911,8 @@ class PurchaseMemCountBar(BarChart):
             purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand=select_brand_id).filter(datetime__lte=date_end, datetime__gte=date_start)
         else:
             purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).filter(datetime__lte=date_end, datetime__gte=date_start)
+        if not purchase_base_set.exists():
+            raise NoData('尚無資料')
         months_difference = rrule.rrule(rrule.MONTHLY, dtstart = date_start, until = date_end).count()
         labels = []
         dates_list = []
@@ -971,6 +1009,8 @@ class PurchaseOrderBar(BarChart):
             purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand=select_brand_id).filter(datetime__lte=date_end, datetime__gte=date_start)
         else:
             purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).filter(datetime__lte=date_end, datetime__gte=date_start)
+        if not purchase_base_set.exists():
+            raise NoData('尚無資料')
         months_difference = rrule.rrule(rrule.MONTHLY, dtstart = date_start, until = date_end).count()
         labels = []
         dates_list = []
@@ -1040,6 +1080,8 @@ class RFHeatMap(MatrixChart):
     def draw(self):
         date_start, date_end = self.get_date_range('time_range')
         purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(datetime__lte=date_end, datetime__gte=date_start)
+        if not purchase_base_set.exists():
+            raise NoData('尚無資料')
         now = timezone.now()
         x_values = ['0-7天', '8-15天', '16-22天', '23-30天','31-90天','>90天']
         y_values = ['1', '2', '3', '4', '5', '>6']
@@ -1128,6 +1170,8 @@ class RFMHeatMap(MatrixChart):
 
     def draw(self):
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        if not purchase_base_set.exists():
+            raise NoData('尚無資料')
         date_start, date_end = self.get_date_range('time_range')
         now = timezone.now()
         x_values = ['0-7天', '8-15天', '16-22天', '23-30天','31-90天','>90天']
@@ -1135,6 +1179,8 @@ class RFMHeatMap(MatrixChart):
         now = timezone.now()
         per_data_count = {}
         perchase_data = purchase_base_set.filter(datetime__lte=date_end, datetime__gte=date_start).values('clientbase_id','datetime','total_price')
+        if not perchase_data.exists():
+            raise NoData('尚無資料')
         for per_data in perchase_data:
             if per_data_count.get(per_data['clientbase_id']):
                 per_data_count[per_data['clientbase_id']]['count'] += 1
@@ -1211,6 +1257,8 @@ class RFMCountBar(BarChart):
 
     def draw(self):
         client_qs = self.team.clientbase_set.filter(removed=False)
+        if not client_qs.exists():
+            raise NoData('尚無資料')
         self.set_total(client_qs.count())
         rfm_total_qs = client_qs.all().values('id','rfm_total_score')
         data = [0] * 15
@@ -1258,6 +1306,8 @@ class RepurchaseMemCountBar(BarChart):
 
     def draw(self):
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        if not purchase_base_set.exists():
+            raise NoData('尚無資料')
         date_start, date_end = self.get_date_range('time_range')
         self.set_total(len(purchase_base_set))
         labels = ['首購', '第一次回購', '第二次回購', '第三次回購', '第四次回購', '大於四次回購']
@@ -1321,6 +1371,8 @@ class RepurchaseDayCountBar(BarChart):
 
     def draw(self):
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        if not purchase_base_set.exists():
+            raise NoData('尚無資料')
         date_start, date_end = self.get_date_range('time_range')
         self.set_total(len(purchase_base_set))
         tooltip_titles = ['第一次回購', '第二次回購', '第三次回購', '第四次回購', '大於四次回購']
@@ -1348,6 +1400,7 @@ class RepurchaseDayCountBar(BarChart):
                 data_member_count[4] += 1
         f_data_member_count = [1 for count in data_member_count if count == 0]
         data = [math.ceil(day / count) for day, count in zip(day_data, f_data_member_count)]
+
         self.notes.update({
             'tooltip_value': f'{{data}} 天 ',
             'tooltip_name': ' '
@@ -1383,6 +1436,8 @@ class NESLHorBar(HorizontalBarChart):
         date_range_in_ne_group = [(date_end - datetime.timedelta(days=90)), date_end]
         date_range_in_sl_group = [(date_end - datetime.timedelta(days=365)), date_end - datetime.timedelta(days=120)]
         purchase_set = PurchaseBase.objects.filter(removed=False)
+        if not purchase_set.exists():
+            raise NoData('尚無資料')
         # get NE group data in range
         purchasebase_ne_group=purchase_set.filter(datetime__lte=date_range_in_ne_group[1], datetime__gte=date_range_in_ne_group[0])
         # get SL group data in range
@@ -1459,12 +1514,14 @@ class PurchaseMemberCount(BarChart):
 
     def draw(self):
         self.trace_days = self.options.get('trace_days', self.trace_days)
+        purchasebase_qs = PurchaseBase.objects.filter(removed=False)
+        if not purchasebase_qs.exists():
+            raise NoData('尚無資料')
         data = []
         now = timezone.now()
         for days in self.trace_days:
             date = now - datetime.timedelta(days=days)
-            # distinct data base on clientbase_id
-            clients = PurchaseBase.objects.filter(removed=False).values('clientbase_id').distinct().filter(datetime__lt=date)
+            clients = purchasebase_qs.filter(removed=False).values('clientbase_id').distinct().filter(datetime__lt=date)
             data.append(clients.count())
         notes = {
             'tooltip_value': f'{{data}} 人'
@@ -1556,6 +1613,8 @@ class PurchaseNumberCount(BarChart):
         data = []
         now = timezone.now()
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        if not purchase_base_set.exists():
+            raise NoData('尚無資料')
         for days in self.trace_days:
             date = now - datetime.timedelta(days=days)
             result = self.get_data_router(select_option, purchase_base_set, date)
@@ -1604,6 +1663,8 @@ class PurchaseOrderCount(BarChart):
         data = []
         now = timezone.now()
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
+        if not purchase_base_set.exists():
+            raise NoData('尚無資料')
         self.set_total(len(purchase_base_set))
         for days in self.trace_days:
             date = now - datetime.timedelta(days=days)
@@ -1813,10 +1874,11 @@ class PurchasePriceTrend(LineChart):
             purchase_base_qs = PurchaseBase.objects.filter(removed=False).filter(brand=select_brand_id)
         else:
             purchase_base_qs = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
+        if not purchase_base_qs.exists():
+            raise NoData('尚無資料')
         date_start, date_end = self.get_date_range('time_range')
         date_list = self.get_per_date_list(date_start, date_end)
         self.set_date_range(date_start, date_end)
-        # price count option
         select_option = self.options.get('select_option','')
         self.set_total(len(purchase_base_qs))
         data = []
@@ -1903,6 +1965,8 @@ class PurchaseMemberTrend(LineChart):
             purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand=select_brand_id)
         else:
             purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
+        if not purchase_base_set.exists():
+            raise NoData('尚無資料')
         date_start, date_end = self.get_date_range('time_range')
         date_list = self.get_per_date_list(date_start, date_end)
         self.set_date_range(date_start, date_end)
@@ -1991,6 +2055,8 @@ class PurchaseOrderTrend(LineChart):
             purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand=select_brand_id)
         else:
             purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
+        if not purchase_base_set.exists():
+            raise NoData('尚無資料')
         date_start, date_end = self.get_date_range('time_range')
         date_list = self.get_per_date_list(date_start, date_end)
         self.set_date_range(date_start, date_end)
@@ -2037,6 +2103,8 @@ class PurchaseLevelHorBar(HorizontalBarChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
+        if not purchasebase_qs.exists():
+            raise NoData('尚無資料')
         purchasebase_qs = purchasebase_qs.filter(current_level_name__isnull=False).values('current_level_name').annotate(total_price_sum=Sum('total_price'))
         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
         pre_data = [0] * len(member_level)
@@ -2119,14 +2187,14 @@ class PurchaseLevelBar(BarChart):
 
     def draw(self):
         date_start, date_end = self.get_date_range('time_range')
-        select_option = self.options.get('select_option','')
-        if not select_option:
-            raise NoData('沒有選擇')
+        select_option = self.options.get('select_option')
         purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(datetime__gte=date_start, datetime__lte=date_end).annotate(
             current_level_name=Subquery(
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
+        if not purchasebase_qs.exists():
+            raise NoData('資料不足')
         result_qs = self.get_data_router(select_option, purchasebase_qs)
         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
         pre_data = [0] * len(member_level)
@@ -2176,6 +2244,8 @@ class PurchaseLevelHorBar(HorizontalBarChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
+        if not purchasebase_qs.exists():
+            raise NoData('資料不足')
         purchasebase_qs = purchasebase_qs.filter(current_level_name__isnull=False).values('current_level_name').annotate(total_price_sum=Sum('total_price'))
         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
         pre_data = [0] * len(member_level)
@@ -2231,6 +2301,8 @@ class PurchaseLevelCountBar(BarChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
+        if not purchasebase_qs.exists():
+            raise NoData('資料不足')
         result_qs = purchasebase_qs.filter(current_level_name__isnull=False).values('current_level_name').annotate(value=Count('clientbase_id'))
         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
         pre_data = [0] * len(member_level)
@@ -2279,6 +2351,8 @@ class PurchaseLevelOrderBar(BarChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
+        if not purchasebase_qs.exists():
+            raise NoData('資料不足')
         result_qs = purchasebase_qs.filter(current_level_name__isnull=False).values('current_level_name').annotate(value=Count('id'))
         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
         pre_data = [0] * len(member_level)
@@ -2369,6 +2443,8 @@ class PurchaseLevelCusPriceRange(BarChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
+        if not purchasebase_qs.exists():
+            raise NoData('資料不足')
         result_qs = purchasebase_qs.filter(current_level_name__isnull=False).values('current_level_name','total_price').annotate(value=Count('id'))
         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
 
@@ -2481,6 +2557,8 @@ class PurchaseLevelTurnOver(BarChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
+        if not purchasebase_qs.exists():
+            raise NoData('資料不足')
         # price count option
         months_difference = rrule.rrule(rrule.MONTHLY, dtstart = date_start, until = date_end).count()
         labels = []
@@ -2595,6 +2673,8 @@ class PurchaseLevelMemverCount(BarChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
+        if not purchasebase_qs.exists():
+            raise NoData('資料不足')
         # price count option
         months_difference = rrule.rrule(rrule.MONTHLY, dtstart = date_start, until = date_end).count()
         labels = []
@@ -2708,6 +2788,8 @@ class PurchaseLevelOrderCount(BarChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
+        if not purchasebase_qs.exists():
+            raise NoData('資料不足')
         # price count option
         months_difference = rrule.rrule(rrule.MONTHLY, dtstart = date_start, until = date_end).count()
         labels = []
@@ -2764,6 +2846,8 @@ class RFMLevelCountBar(BarChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__lt=now).order_by('-from_datetime').values('to_level__name')[:1]
             )
         )
+        if not client_qs.exists():
+            raise NoData('資料不足')
         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
 
         labels = [num for num in range(1,16)]
@@ -2826,6 +2910,8 @@ class RepurchaseLevelMemCountBar(BarChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
+        if not purchasebase_qs.exists():
+            raise NoData('資料不足')
         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
         order_member_count = purchasebase_qs.filter(datetime__lte=date_end, datetime__gte=date_start).values('clientbase_id').annotate(value=Count('clientbase_id'))
         for level in member_level:
@@ -2910,7 +2996,9 @@ class RepurchaseLevelDayCountBar(BarChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
-        if level != '-':
+        if not purchasebase_qs.exists():
+            raise NoData('資料不足')
+        if level != 'no_levels':
             purchasebase_qs.filter(current_level_name=level)
         self.set_total(len(purchasebase_qs))
         perchase_data = purchasebase_qs.values('clientbase_id','datetime')
@@ -3044,14 +3132,18 @@ class PurchaseLevelPurchaseCount(BarChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
+        if not purchasebase_qs.exists():
+            raise NoData('資料不足')
         if level != 'no_levels':
             purchasebase_qs = purchasebase_qs.filter(current_level_name=id_level_map[int(level)])
-        print('purchasebase_qs2: ', purchasebase_qs)
         select_option = self.options.get('select_option','')
         for days in self.trace_days:
             date = now - datetime.timedelta(days=days)
             result = self.get_data_router(select_option,purchasebase_qs, date)
             data.append(result)
+        check_data = set(data)
+        if check_data == {0} or check_data == {None}:
+            raise NoData('資料不足')
         notes = {
             'tooltip_value': '{data} 元'
         }
@@ -3100,13 +3192,14 @@ class PurchaseLevelMemberCount(BarChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
+        if not purchasebase_qs.exists():
+            raise NoData('資料不足')
 
         now = timezone.now()
         for level in member_level:
             data = [0] * len(self.trace_days)
             for idx, days in enumerate(self.trace_days):
                 date = now - datetime.timedelta(days=days)
-                # distinct data base on clientbase_id
                 clients = purchasebase_qs.filter(current_level_name=level).values('clientbase_id').distinct().filter(datetime__lt=date)
                 data[idx] = clients.count()
             notes = {
@@ -3156,13 +3249,13 @@ class PurchaseLevelOrderTrend(BarChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
-
+        if not purchasebase_qs.exists():
+            raise NoData('資料不足')
         now = timezone.now()
         for level in member_level:
             data = [0] * len(self.trace_days)
             for idx, days in enumerate(self.trace_days):
                 date = now - datetime.timedelta(days=days)
-                # distinct data base on clientbase_id
                 clients = purchasebase_qs.filter(current_level_name=level).values('id').filter(datetime__lt=date)
                 data[idx] = clients.count()
             notes = {
@@ -3297,6 +3390,8 @@ class PurchaseLevelPriceTrend(LineChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
+        if not purchasebase_qs.exists():
+            raise NoData('資料不足')
         date_start, date_end = self.get_date_range('time_range')
         date_list = self.get_per_date_list(date_start, date_end)
         self.set_date_range(date_start, date_end)
@@ -3403,6 +3498,8 @@ class PurchaseLevelMemberTrend(LineChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
+        if not purchasebase_qs.exists():
+            raise NoData('資料不足')
         date_start, date_end = self.get_date_range('time_range')
         date_list = self.get_per_date_list(date_start, date_end)
         self.set_date_range(date_start, date_end)
@@ -3509,6 +3606,8 @@ class PurchaseLevelOrderCountTrend(LineChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
+        if not purchasebase_qs.exists():
+            raise NoData('資料不足')
         date_start, date_end = self.get_date_range('time_range')
         date_list = self.get_per_date_list(date_start, date_end)
         self.set_date_range(date_start, date_end)
