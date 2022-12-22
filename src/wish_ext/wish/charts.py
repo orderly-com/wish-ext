@@ -2485,7 +2485,7 @@ class PurchaseLevelTurnOver(BarChart):
         return ' '
 
     def explain_y(self):
-        return '人數'
+        return '金額'
 
     def get_teamauth_brand_ids(self):
         teamauth = self.user.teamauth_set.filter(team=self.team).first()
@@ -2557,7 +2557,7 @@ class PurchaseLevelTurnOver(BarChart):
         for name in member_level:
             data = []
             for date in dates_list:
-                qs_result_dict = purchasebase_qs.filter(current_level_name=name).filter(datetime__year=date.year,datetime__month=date.month).aggregate(value=Count('clientbase_id'))
+                qs_result_dict = purchasebase_qs.filter(current_level_name=name).filter(datetime__year=date.year,datetime__month=date.month).aggregate(value=Sum('total_price'))
                 result = 0
                 if qs_result_dict.get('value'):
                     result = qs_result_dict.get('value')
