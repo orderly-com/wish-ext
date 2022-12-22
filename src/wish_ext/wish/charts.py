@@ -2351,8 +2351,9 @@ class PurchaseLevelOrderBar(BarChart):
 
         self.create_label(data=pre_data, notes=self.notes)
 
-@overview_charts.chart(name='交易等級客單價區間單數直條圖')
+@overview_charts.chart(name='交易等級客單價區間人數直條圖')
 class PurchaseLevelCusPriceRange(BarChart):
+    stacked = True
     def __init__(self):
         super().__init__()
         now = timezone.now()
@@ -2448,6 +2449,7 @@ class PurchaseLevelCusPriceRange(BarChart):
 
 @overview_charts.chart(name='交易等級營業額直條圖(集團)')
 class PurchaseLevelTurnOver(BarChart):
+    stacked = True
     TURNOVER = 'turnover'
     PERCUSPRICE = 'per_cus_price'
     AVGPRICE = 'avg_price'
@@ -2577,6 +2579,7 @@ class PurchaseLevelTurnOver(BarChart):
 
 @overview_charts.chart(name='交易等級人數直條圖(集團)')
 class PurchaseLevelMemverCount(BarChart):
+    stacked = True
     def __init__(self):
         super().__init__()
         now = timezone.now()
@@ -2701,6 +2704,7 @@ class PurchaseLevelMemverCount(BarChart):
 
 @overview_charts.chart(name='交易等級單數直條圖(集團)')
 class PurchaseLevelOrderCount(BarChart):
+    stacked = True
     def __init__(self):
         super().__init__()
         now = timezone.now()
@@ -2824,6 +2828,7 @@ class PurchaseLevelOrderCount(BarChart):
 
 @overview_charts.chart(name='RFM 分數等級人數直條圖')
 class RFMLevelCountBar(BarChart):
+    stacked = True
     def __init__(self):
         super().__init__()
         now = timezone.now()
@@ -2888,6 +2893,7 @@ class RFMLevelCountBar(BarChart):
 
 @overview_charts.chart(name='交易等級回購人數直條圖')
 class RepurchaseLevelMemCountBar(BarChart):
+    stacked = True
     def __init__(self):
         super().__init__()
         now = timezone.now()
@@ -3187,6 +3193,7 @@ class PurchaseLevelMemberCount(BarChart):
             default: [365, 30, 7, 1]
             explain: determine datetime points of x-axis.
     '''
+    stacked = True
     def __init__(self):
         super().__init__()
         self.trace_days = [365, 30, 7, 1]
@@ -3244,6 +3251,7 @@ class PurchaseLevelOrderTrend(BarChart):
             default: [365, 30, 7, 1]
             explain: determine datetime points of x-axis.
     '''
+    stacked = True
     def __init__(self):
         super().__init__()
         self.trace_days = [365, 30, 7, 1]
@@ -3733,7 +3741,7 @@ class LevelsPurchase:
        PurchaseLevelBar.preset('交易等級金額直條圖'),
        PurchaseLevelCountBar.preset('交易等級人數直條圖'),
        PurchaseLevelOrderBar.preset('交易等級單數直條圖'),
-       PurchaseLevelCusPriceRange.preset('交易等級客單價區間單數直條圖', width='full'),
+       PurchaseLevelCusPriceRange.preset('交易等級客單價區間人數直條圖', width='full'),
        PurchaseLevelTurnOver.preset('交易等級營業額直條圖(集團)', width='full'),
        PurchaseLevelMemverCount.preset('交易等級人數直條圖(集團)', width='full'),
        PurchaseLevelOrderCount.preset('交易等級單數直條圖(集團)', width='full'),
