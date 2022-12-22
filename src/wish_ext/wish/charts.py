@@ -3545,8 +3545,8 @@ class PurchaseLevelMemberTrend(LineChart):
         for level in member_level:
             data = []
             for date in date_list:
-                result = purchasebase_qs.filter(current_level_name=level, datetime__date=date.date()).aggregate(value=Count('clientbase_id'))
-                data.append(result['value'])
+                clientbase_count = purchasebase_qs.filter(current_level_name=level, datetime__date=date.date()).values('clientbase_id').distinct().count()
+                data.append(clientbase_count)
             self.notes.update({
                     'tooltip_value': '{name} {data} 人',
                     'tooltip_name': ' '
