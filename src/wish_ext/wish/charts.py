@@ -2956,7 +2956,7 @@ class RepurchaseLevelMemCountBar(BarChart):
             data_check.append(set(data))
 
             self.notes.update({
-                    'tooltip_value': f'{{data}} 人<br> 佔會員比例: {{percentage}}%',
+                    'tooltip_value': '{name}<br>{data}人',
                     'tooltip_name': ' '
                 })
 
