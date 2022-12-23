@@ -13,6 +13,8 @@ from django.db.models import Count, Func, Max, Min, IntegerField, Sum, Avg
 from django.db.models import ExpressionWrapper, DecimalField, FloatField
 from django.db.models.expressions import OuterRef, Subquery
 from dateutil import rrule
+from django.db.models.functions import Abs
+
 
 from charts.exceptions import NoData
 from charts.registries import chart_category
@@ -3779,7 +3781,6 @@ class LevelPointGiveBar(BarChart):
                 if qs_result_dict.get('value'):
                     result = qs_result_dict.get('value')
                 data.append(result)
-            print('data: ', data)
             self.notes.update({
                     'tooltip_value': '{name} <br> {data} 點',
                     'tooltip_name': ' '
@@ -4138,7 +4139,7 @@ class LevelPointExcTrend(BarChart):
             data = []
             for days in self.trace_days:
                 date = now - datetime.timedelta(days=days)
-                qs_result_dict = qs.filter(current_level_name=level, is_transaction=is_trans).filter(amount__lt=0, datetime__lt=date).aggregate(value=Sum('amount'))
+                qs_result_dict = qs.filter(current_level_name=level, is_transaction=is_trans).filter(amount__lt=0, datetime__lt=date).aggregate(value=Sum(Abs('amount')))
                 result = 0
                 if qs_result_dict.get('value'):
                     result = qs_result_dict.get('value')
