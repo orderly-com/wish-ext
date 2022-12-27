@@ -4157,6 +4157,208 @@ class LevelPointExcTrend(BarChart):
         if data_check_count == len(data_check):
             raise NoData('資料不足')
 
+@trend_charts.chart(name='等級給點折線圖')
+class PointGiveLevelTrend(LineChart):
+    TRANS = 'transaction'
+    NOT_TRANS = 'not_transaction'
+    point_id_name_map = {}
+    def __init__(self):
+        super().__init__()
+        now = timezone.now()
+        self.add_options(time_range=DateRangeCondition('時間範圍').default(
+            (
+                (now - datetime.timedelta(days=30)).isoformat(),
+                now.isoformat()
+            )),
+            trans_option=ModeCondition('').choice(
+                {'id': self.TRANS, 'text': '交易'},
+                {'id': self.NOT_TRANS, 'text': '非交易'},
+            ).default(self.TRANS)
+        )
+
+    def explain_y(self):
+        return '點數'
+
+    def explain_x(self):
+        return ' '
+
+    def get_per_date_list(self, start_date, end_date):
+        date_list = []
+        delta = end_date - start_date
+        for i in range(delta.days + 1):
+            date_list.append(start_date + datetime.timedelta(days=i))
+        return date_list
+
+    def get_point_name_id_map(self, qs):
+        point_id_map = {}
+        for data in qs:
+            if data['point_name'] not in point_id_map:
+                point_id_map[data['point_name']] = data['id']
+        return point_id_map
+
+    def get_point_data(self):
+        point_name_id_map = {}
+        point_qs = PointLogBase.objects.filter(removed=False).values('id','point_name')
+        point_name_id_map = self.get_point_name_id_map(point_qs)
+        self.point_name_id_map = point_name_id_map
+        point_data = []
+        name_check = set()
+        for item in point_qs:
+            if item['point_name'] in name_check:
+                continue
+            id_name_map = {}
+            point_id = point_name_id_map[item['point_name']]
+            id_name_map['id'] = point_id
+            id_name_map['text'] = item['point_name']
+            self.point_id_name_map[item['id']] = item['point_name']
+            name_check.add(item['point_name'])
+            point_data.append(id_name_map)
+        return point_data
+
+
+    def draw(self):
+        trans_option = self.options.get('trans_option')
+        date_start, date_end = self.get_date_range('time_range')
+        date_list = self.get_per_date_list(date_start, date_end)
+        is_trans = True
+        if trans_option is not None:
+            if trans_option == self.TRANS:
+                is_trans = True
+            else:
+                is_trans = False
+            qs = PointLogBase.objects.filter(removed=False).filter(is_transaction=is_trans, amount__gte=0).annotate(
+            current_level_name=Subquery(
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+                )
+            )
+        else:
+            raise NoData('無設置交易選項')
+
+        if not qs.exists():
+            raise NoData('尚無資料')
+        now = timezone.now()
+        member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
+        self.set_date_range(date_start, date_end)
+
+        data_check = []
+
+        for level in member_level:
+            data = []
+            for date in date_list:
+                qs_result_dict = qs.filter(current_level_name=level, datetime__date=date.date()).aggregate(value=Sum('amount'))
+                result = 0
+                if qs_result_dict.get('value'):
+                    result = qs_result_dict.get('value')
+                data.append(result)
+            notes = {
+                'tooltip_value': f'{{data}} 點'
+            }
+            data_check.append(set(data))
+
+            self.create_label(name=level, data=data, notes=notes)
+
+@trend_charts.chart(name='等級兌點折線圖')
+class PointExcLevelTrend(LineChart):
+    TRANS = 'transaction'
+    NOT_TRANS = 'not_transaction'
+    point_id_name_map = {}
+    def __init__(self):
+        super().__init__()
+        now = timezone.now()
+        self.x_title = '  '
+        self.y_title = '點數'
+        self.add_options(time_range=DateRangeCondition('時間範圍').default(
+            (
+                (now - datetime.timedelta(days=30)).isoformat(),
+                now.isoformat()
+            )),
+            trans_option=ModeCondition('').choice(
+                {'id': self.TRANS, 'text': '交易'},
+                {'id': self.NOT_TRANS, 'text': '非交易'},
+            ).default(self.TRANS)
+        )
+
+    def explain_y(self):
+        return '點數'
+
+    def explain_x(self):
+        return ' '
+
+    def get_per_date_list(self, start_date, end_date):
+        date_list = []
+        delta = end_date - start_date
+        for i in range(delta.days + 1):
+            date_list.append(start_date + datetime.timedelta(days=i))
+        return date_list
+
+    def get_point_name_id_map(self, qs):
+        point_id_map = {}
+        for data in qs:
+            if data['point_name'] not in point_id_map:
+                point_id_map[data['point_name']] = data['id']
+        return point_id_map
+
+    def get_point_data(self):
+        point_name_id_map = {}
+        point_qs = PointLogBase.objects.filter(removed=False).values('id','point_name')
+        point_name_id_map = self.get_point_name_id_map(point_qs)
+        self.point_name_id_map = point_name_id_map
+        point_data = []
+        name_check = set()
+        for item in point_qs:
+            if item['point_name'] in name_check:
+                continue
+            id_name_map = {}
+            point_id = point_name_id_map[item['point_name']]
+            id_name_map['id'] = point_id
+            id_name_map['text'] = item['point_name']
+            self.point_id_name_map[item['id']] = item['point_name']
+            name_check.add(item['point_name'])
+            point_data.append(id_name_map)
+        return point_data
+
+
+    def draw(self):
+        trans_option = self.options.get('trans_option')
+        date_start, date_end = self.get_date_range('time_range')
+        date_list = self.get_per_date_list(date_start, date_end)
+        is_trans = True
+        if trans_option is not None:
+            if trans_option == self.TRANS:
+                is_trans = True
+            else:
+                is_trans = False
+            qs = PointLogBase.objects.filter(removed=False, is_transaction=is_trans, amount__lt=0).annotate(
+            current_level_name=Subquery(
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+                )
+            )
+        else:
+            raise NoData('無設置交易選項')
+
+        if not qs.exists():
+            raise NoData('尚無資料')
+        now = timezone.now()
+        member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
+        self.set_date_range(date_start, date_end)
+
+        data_check = []
+
+        for level in member_level:
+            data = []
+            for date in date_list:
+                qs_result_dict = qs.filter(current_level_name=level, datetime__date=date.date()).aggregate(value=Sum(Abs('amount')))
+                result = 0
+                if qs_result_dict.get('value'):
+                    result = qs_result_dict.get('value')
+                data.append(result)
+            notes = {
+                'tooltip_value': f'{{data}} 點'
+            }
+            data_check.append(set(data))
+
+            self.create_label(name=level, data=data, notes=notes)
+
 
 
 @dashboard_preset
@@ -4233,5 +4435,7 @@ class LevelPoint:
         LevelPointGiveBar.preset('等級給點直條圖'),
         LevelPointExcBar.preset('等級兑點直條圖'),
         LevelPointGiveTrend.preset('等級給點往期直條圖'),
-        LevelPointExcTrend.preset('等級兌點往期直條圖')
+        LevelPointExcTrend.preset('等級兌點往期直條圖'),
+        PointGiveLevelTrend.preset('等級給點折線圖', width='full'),
+        PointExcLevelTrend.preset('等級兌點折線圖', width='full')
     ]
