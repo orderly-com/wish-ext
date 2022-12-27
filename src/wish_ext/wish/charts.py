@@ -3999,7 +3999,7 @@ class LevelPointGiveTrend(BarChart):
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
-            qs.values('is_transaction', 'current_level_name', 'amount')
+            #qs.values('is_transaction', 'current_level_name', 'amount')
         if not qs.exists():
             raise NoData('尚無資料')
 
@@ -4162,6 +4162,7 @@ class PointGiveLevelTrend(LineChart):
     TRANS = 'transaction'
     NOT_TRANS = 'not_transaction'
     point_id_name_map = {}
+    date_map = {}
     def __init__(self):
         super().__init__()
         now = timezone.now()
@@ -4187,6 +4188,8 @@ class PointGiveLevelTrend(LineChart):
         delta = end_date - start_date
         for i in range(delta.days + 1):
             date_list.append(start_date + datetime.timedelta(days=i))
+            date = (start_date + datetime.timedelta(days=i)).date().strftime('%Y-%m-%d')
+            self.date_map[date] = i
         return date_list
 
     def get_point_name_id_map(self, qs):
@@ -4226,7 +4229,7 @@ class PointGiveLevelTrend(LineChart):
                 is_trans = True
             else:
                 is_trans = False
-            qs = PointLogBase.objects.filter(removed=False).filter(is_transaction=is_trans, amount__gte=0).annotate(
+            qs = PointLogBase.objects.filter(removed=False).filter(is_transaction=is_trans, amount__gte=0, datetime__gte=date_start, datetime__lte=date_end).annotate(
             current_level_name=Subquery(
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
                 )
@@ -4243,13 +4246,11 @@ class PointGiveLevelTrend(LineChart):
         data_check = []
 
         for level in member_level:
-            data = []
-            for date in date_list:
-                qs_result_dict = qs.filter(current_level_name=level, datetime__date=date.date()).aggregate(value=Sum('amount'))
-                result = 0
-                if qs_result_dict.get('value'):
-                    result = qs_result_dict.get('value')
-                data.append(result)
+            data = [0] * len(date_list)
+            result_qs = qs.filter(current_level_name=level).annotate(date_group=TruncDate('datetime')).values('date_group').annotate(value=Sum('amount')).order_by('datetime')
+            for per_res in result_qs:
+                str_date = per_res['date_group'].strftime('%Y-%m-%d')
+                data[self.date_map[str_date]] += per_res['value']
             notes = {
                 'tooltip_value': f'{{data}} 點'
             }
@@ -4262,6 +4263,7 @@ class PointExcLevelTrend(LineChart):
     TRANS = 'transaction'
     NOT_TRANS = 'not_transaction'
     point_id_name_map = {}
+    date_map = {}
     def __init__(self):
         super().__init__()
         now = timezone.now()
@@ -4289,6 +4291,8 @@ class PointExcLevelTrend(LineChart):
         delta = end_date - start_date
         for i in range(delta.days + 1):
             date_list.append(start_date + datetime.timedelta(days=i))
+            date = (start_date + datetime.timedelta(days=i)).date().strftime('%Y-%m-%d')
+            self.date_map[date] = i
         return date_list
 
     def get_point_name_id_map(self, qs):
@@ -4328,7 +4332,7 @@ class PointExcLevelTrend(LineChart):
                 is_trans = True
             else:
                 is_trans = False
-            qs = PointLogBase.objects.filter(removed=False, is_transaction=is_trans, amount__lt=0).annotate(
+            qs = PointLogBase.objects.filter(removed=False, is_transaction=is_trans, amount__lt=0, datetime__gte=date_start, datetime__lte=date_end).annotate(
             current_level_name=Subquery(
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
                 )
@@ -4345,13 +4349,11 @@ class PointExcLevelTrend(LineChart):
         data_check = []
 
         for level in member_level:
-            data = []
-            for date in date_list:
-                qs_result_dict = qs.filter(current_level_name=level, datetime__date=date.date()).aggregate(value=Sum(Abs('amount')))
-                result = 0
-                if qs_result_dict.get('value'):
-                    result = qs_result_dict.get('value')
-                data.append(result)
+            data = [0] * len(date_list)
+            result_qs = qs.filter(current_level_name=level).annotate(date_group=TruncDate('datetime')).values('date_group').annotate(value=Sum(Abs('amount'))).order_by('datetime')
+            for per_res in result_qs:
+                str_date = per_res['date_group'].strftime('%Y-%m-%d')
+                data[self.date_map[str_date]] += abs(per_res['value'])
             notes = {
                 'tooltip_value': f'{{data}} 點'
             }
