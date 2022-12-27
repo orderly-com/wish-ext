@@ -3457,6 +3457,7 @@ class PurchaseLevelPriceTrend(LineChart):
 
 @trend_charts.chart(name='交易等級人數折線圖(集團)')
 class PurchaseLevelMemberTrend(LineChart):
+    date_map = {}
     def __init__(self):
         super().__init__()
         now = timezone.now()
@@ -3515,45 +3516,47 @@ class PurchaseLevelMemberTrend(LineChart):
         delta = end_date - start_date
         for i in range(delta.days + 1):
             date_list.append(start_date + datetime.timedelta(days=i))
+            date = (start_date + datetime.timedelta(days=i)).date().strftime('%Y-%m-%d')
+            self.date_map[date] = i
         return date_list
 
     def draw(self):
-        # brand option selection
+        date_start, date_end = self.get_date_range('time_range')
+        date_list = self.get_per_date_list(date_start, date_end)
+        self.set_date_range(date_start, date_end)
         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
         select_brand_id = self.options.get('all_brand')
         teamauth_brands = self.get_teamauth_brand_ids()
         teamauth_brands = [brand['brand_id'] for brand in teamauth_brands]
         if select_brand_id is None:
-            purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).annotate(
+            qs = PurchaseBase.objects.filter(removed=False,datetime__gte=date_start, datetime__lte=date_end).filter(brand__in=teamauth_brands).annotate(
             current_level_name=Subquery(
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
         elif select_brand_id != 'all':
-             purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(brand=select_brand_id).annotate(
+            qs = PurchaseBase.objects.filter(removed=False,datetime__gte=date_start, datetime__lte=date_end).filter(brand=select_brand_id).annotate(
             current_level_name=Subquery(
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
         else:
-             purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).annotate(
+            qs = PurchaseBase.objects.filter(removed=False,datetime__gte=date_start, datetime__lte=date_end).filter(brand__in=teamauth_brands).annotate(
             current_level_name=Subquery(
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
                 )
             )
-        if not purchasebase_qs.exists():
+        if not qs.exists():
             raise NoData('資料不足')
-        date_start, date_end = self.get_date_range('time_range')
-        date_list = self.get_per_date_list(date_start, date_end)
-        self.set_date_range(date_start, date_end)
         select_option = self.options.get('select_option','')
-        self.set_total(len(purchasebase_qs))
+        self.set_total(len(qs))
         data_check = []
         for level in member_level:
-            data = []
-            for date in date_list:
-                clientbase_count = purchasebase_qs.filter(current_level_name=level, datetime__date=date.date()).values('clientbase_id').distinct().count()
-                data.append(clientbase_count)
+            data = [0] * len(date_list)
+            result_qs = qs.filter(current_level_name=level).values(date=TruncDate('datetime')).annotate(value=Count('clientbase_id',distinct=True)).order_by('date')
+            for per_res in result_qs:
+                str_date = per_res['date'].strftime('%Y-%m-%d')
+                data[self.date_map[str_date]] += abs(per_res['value'])
             self.notes.update({
                     'tooltip_value': '{name} {data} 人',
                     'tooltip_name': ' '
