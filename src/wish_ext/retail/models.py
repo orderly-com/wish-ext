@@ -475,6 +475,9 @@ class RetailProduct(ProductBase):
     attributions = JSONField(default=dict)
     categories = models.ManyToManyField(ProductCategory, blank=True)
 
+    def __str__(self):
+        return self.name
+
     def get_detail_url(self):
         return reverse('media:article-detail', kwargs={'uuid': self.uuid})
 

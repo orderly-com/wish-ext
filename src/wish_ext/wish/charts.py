@@ -10,6 +10,7 @@ import numpy as np
 from django.utils import timezone
 from django.db.models.functions import TruncDate, ExtractMonth, ExtractYear, Cast, ExtractWeekDay
 from django.db.models import Count, Func, Max, Min, IntegerField, Sum, Avg
+from django.contrib.postgres.aggregates import ArrayAgg
 from django.db.models import ExpressionWrapper, DecimalField, FloatField
 from django.db.models.expressions import OuterRef, Subquery
 from dateutil import rrule
@@ -29,9 +30,12 @@ from orderly_core.team.charts import overview_charts, AttributionPieChart, past_
 from charts.drawers import MatrixChart, HeatMapChart
 from charts.registries import chart_category, dashboard_preset
 from .models import EventBase, LevelLogBase, EventLogBase, EventBase, MemberLevelBase, PointLogBase
-from wish_ext.retail.models import PurchaseBase
+from wish_ext.retail.models import PurchaseBase, OrderProduct, RetailProduct
 from wish_ext.wish.models import Brand, BrandAuth
 import pandas as pd
+from mlxtend.preprocessing import TransactionEncoder
+from mlxtend.frequent_patterns import apriori, fpmax, fpgrowth
+from mlxtend.frequent_patterns import association_rules
 
 
 @overview_charts.chart(name='等級人數圓餅圖')
@@ -40,7 +44,7 @@ class MemberLevelPieChart(PieChart):
         now = timezone.now()
         clients = self.team.clientbase_set.filter(removed=False)
         if not clients.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         client_qs = clients.annotate(
             current_level_name=Subquery(
                 LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__lt=now).order_by('-from_datetime').values('to_level__name')[:1]
@@ -272,7 +276,8 @@ class MemberLevelTrend(LineChart):
                 (now - datetime.timedelta(days=90)).isoformat(),
                 now.isoformat()
             )
-        ))
+        )
+        )
 
     def explain_x(self):
         return ' '
@@ -364,10 +369,10 @@ class FutureLevelDueTrend(LineChart):
 
         client_qs = client_qs.annotate(
             current_level_due=Subquery(
-                LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_datetime')[:1]
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__lt=now).order_by('-from_datetime').values('to_datetime')[:1]
             ),
             current_level_id=Subquery(
-                LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level_id')[:1]
+                LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__lt=now).order_by('-from_datetime').values('to_level_id')[:1]
             )
         )
         if not client_qs.exists():
@@ -436,7 +441,7 @@ class PurchaseMemberRateCard(DataCard):
         result = (purchase_member_count / clients_count) * 100
         self.set_data('%.1f'%result, postfix='%')
 
-@overview_charts.chart(name='交易筆數')
+@overview_charts.chart(name='交易單數')
 class PurchaseCountCard(DataCard):
     icon = 'licon-order'
     def draw(self):
@@ -478,6 +483,7 @@ class AvgPerMemberCard(DataCard):
         else:
             result = math.ceil(turnover / member_count)
         self.set_data(result, postfix='元')
+
 @overview_charts.chart(name='交易時間熱區圖')
 class PurchaseTimeHeatMap(HeatMapChart):
     unit = '元'
@@ -587,11 +593,11 @@ class PurchaseTimeHeatMap(HeatMapChart):
         date_start, date_end = self.get_date_range('time_range')
         purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(datetime__gte=date_start, datetime__lte=date_end)
         if not purchasebase_qs.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         if data_options:
             purchasebase_qs = self.data_router(purchasebase_qs, data_options)
             if not purchasebase_qs.exists():
-                raise NoData('尚無資料')
+                raise NoData('資料不足')
         f_data = {}
         for x in self.x_values:
             for y in self.y_values:
@@ -680,7 +686,7 @@ class AvgPerMemberRange(BarChart):
 
         purchase_set = PurchaseBase.objects.filter(removed=False).filter(datetime__gte=date_start, datetime__lte=date_end)
         if not purchase_set.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         self.set_total(len(purchase_set))
         step = self.options.get('step', 999)
         minimum = self.options.get('min', 999)
@@ -688,7 +694,7 @@ class AvgPerMemberRange(BarChart):
         data = [0] * int((maximum-minimum) / step + 1)
         per_purchase_set = purchase_set.all().values('total_price').annotate(count=Count('id'))
         if not per_purchase_set.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         for per_data in per_purchase_set:
             index = get_bin_index(per_data['total_price'])
             data[index] += per_data['count']
@@ -815,7 +821,7 @@ class PurchaseNumberBar(BarChart):
         else:
             purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).filter(datetime__lte=date_end, datetime__gte=date_start)
         if not purchase_base_set.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         # price count option
         months_difference = rrule.rrule(rrule.MONTHLY, dtstart = date_start, until = date_end).count()
         labels = []
@@ -835,7 +841,7 @@ class PurchaseNumberBar(BarChart):
             data.append(result)
         data_check = set(data)
         if data_check == {0} or data_check == {None}:
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         self.notes.update({
                 'tooltip_value': '交易金額 <br> {data} 元',
                 'tooltip_name': ' '
@@ -917,7 +923,7 @@ class PurchaseMemCountBar(BarChart):
         else:
             purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).filter(datetime__lte=date_end, datetime__gte=date_start)
         if not purchase_base_set.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         months_difference = rrule.rrule(rrule.MONTHLY, dtstart = date_start, until = date_end).count()
         labels = []
         dates_list = []
@@ -1015,7 +1021,7 @@ class PurchaseOrderBar(BarChart):
         else:
             purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands).filter(datetime__lte=date_end, datetime__gte=date_start)
         if not purchase_base_set.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         months_difference = rrule.rrule(rrule.MONTHLY, dtstart = date_start, until = date_end).count()
         labels = []
         dates_list = []
@@ -1086,7 +1092,7 @@ class RFHeatMap(MatrixChart):
         date_start, date_end = self.get_date_range('time_range')
         purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(datetime__lte=date_end, datetime__gte=date_start)
         if not purchase_base_set.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         now = timezone.now()
         x_values = ['0-7天', '8-15天', '16-22天', '23-30天','31-90天','>90天']
         y_values = ['1', '2', '3', '4', '5', '>6']
@@ -1176,7 +1182,7 @@ class RFMHeatMap(MatrixChart):
     def draw(self):
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
         if not purchase_base_set.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         date_start, date_end = self.get_date_range('time_range')
         now = timezone.now()
         x_values = ['0-7天', '8-15天', '16-22天', '23-30天','31-90天','>90天']
@@ -1185,7 +1191,7 @@ class RFMHeatMap(MatrixChart):
         per_data_count = {}
         perchase_data = purchase_base_set.filter(datetime__lte=date_end, datetime__gte=date_start).values('clientbase_id','datetime','total_price')
         if not perchase_data.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         for per_data in perchase_data:
             if per_data_count.get(per_data['clientbase_id']):
                 per_data_count[per_data['clientbase_id']]['count'] += 1
@@ -1263,7 +1269,7 @@ class RFMCountBar(BarChart):
     def draw(self):
         client_qs = self.team.clientbase_set.filter(removed=False)
         if not client_qs.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         self.set_total(client_qs.count())
         rfm_total_qs = client_qs.all().values('id','rfm_total_score')
         data = [0] * 15
@@ -1312,7 +1318,7 @@ class RepurchaseMemCountBar(BarChart):
     def draw(self):
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
         if not purchase_base_set.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         date_start, date_end = self.get_date_range('time_range')
         self.set_total(len(purchase_base_set))
         labels = ['首購', '第一次回購', '第二次回購', '第三次回購', '第四次回購', '大於四次回購']
@@ -1348,7 +1354,7 @@ class RepurchaseMemCountBar(BarChart):
 
         data_check = set(data)
         if data_check == {0} or data_check == {None}:
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
 
 @overview_charts.chart(name='交易回購天數直條圖')
 class RepurchaseDayCountBar(BarChart):
@@ -1381,7 +1387,7 @@ class RepurchaseDayCountBar(BarChart):
     def draw(self):
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
         if not purchase_base_set.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         date_start, date_end = self.get_date_range('time_range')
         self.set_total(len(purchase_base_set))
         tooltip_titles = ['第一次回購', '第二次回購', '第三次回購', '第四次回購', '大於四次回購']
@@ -1411,7 +1417,7 @@ class RepurchaseDayCountBar(BarChart):
         data = [math.ceil(day / count) for day, count in zip(day_data, f_data_member_count)]
         data_check = set(data)
         if data_check == {0} or data_check == {None}:
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
 
         self.notes.update({
             'tooltip_value': f'{{data}} 天 ',
@@ -1454,7 +1460,7 @@ class NESLHorBar(HorizontalBarChart):
         purchasebase_sl_group=purchase_set.filter(datetime__lte=date_range_in_sl_group[1], datetime__gte=date_range_in_sl_group[0])
 
         if not purchasebase_ne_group.exists() and not purchasebase_sl_group.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         # get all NE group clients id
         purchasebase_ne_group_cli_id = purchasebase_ne_group.values_list('clientbase_id',flat=True)
         # get all SL group
@@ -1490,6 +1496,250 @@ class NESLHorBar(HorizontalBarChart):
             'tooltip_name': ' '
         }
         self.create_label(data=data, notes=notes)
+
+@overview_charts.chart(name='商品併買support圖表')
+class ProductAssSupBar(BarChart):
+    product_id_map = {}
+    def __init__(self):
+        super().__init__()
+
+    def init_user(self):
+        product_selection = DropDownCondition('品牌')
+        products = self.get_product_data()
+
+        if not products:
+             product_selection.choice(*products).default('no product')
+        else:
+            product_selection.choice(*products).default(products[0]['id'])
+
+        self.add_options(products=product_selection)
+
+
+    def get_product_data(self):
+        product_data = []
+        product_data.append({'id': 'no', 'text': '未選擇'})
+        product_set = RetailProduct.objects.filter(removed='False').values('id','name')
+        for item in product_set:
+            id_name_map = {}
+            id_name_map['id'] = item['id']
+            id_name_map['text'] = item['name']
+            if item['id'] not in self.product_id_map:
+                self.product_id_map[str(item['id'])] = item['name']
+            product_data.append(id_name_map)
+        return product_data
+
+    def explain_x(self):
+        return 'antecedent'
+
+    def explain_y(self):
+        return 'support'
+
+    def df_trans(self, product_sets):
+        dt = product_sets
+        te = TransactionEncoder()
+        te_ary = te.fit(dt).transform(dt)
+        df = pd.DataFrame(te_ary, columns=te.columns_)
+        return df
+
+    def get_ass_rule(self, df):
+        min_support = 1.0
+        active = True
+        rules = None
+        while min_support > 0:
+            frequent_itemsets = fpgrowth(df, min_support=min_support, use_colnames=True, max_len=2)
+            if frequent_itemsets.shape[0] != 0:
+                frequent_itemsets.sort_values(by='support', ascending=False, inplace=True)
+                rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=0.7)
+            if min_support >0.2:
+                min_support -= 0.1
+            else:
+                min_support -= 0.01
+                min_support = float(format(min_support, '.2f'))
+            if min_support <= 0.01:
+                break
+            if frequent_itemsets.shape[0] != 0:
+                if rules.shape[0] >= 10:
+                    return rules
+        if rules is None:
+            raise NoData('沒有資料')
+        return rules
+
+    def get_rule_result(self, rules_result, title):
+        result_list = []
+        if rules_result.shape[0] >= 10:
+            for data in rules_result.head(11)[title]:
+                if title != 'support':
+                    result_list.append('_'.join(list(data)))
+                else:
+                    result_list.append(float('%.2f' % data))
+        else:
+            for data in rules_result.head(rules_result.shape[0] + 1)[title]:
+                if title != 'support':
+                    result_list.append('_'.join(list(data)))
+                else:
+                    result_list.append(float('%.2f' % data))
+        return result_list
+
+
+    def draw(self):
+        #self.add_annotation(y=1)
+        select_product = self.options.get('products')
+        if select_product != 'no':
+            select_product = int(select_product)
+        qs = OrderProduct.objects.prefetch_related('productbase').prefetch_related('purchasebase')
+        qs = qs.values('purchasebase_id').annotate(products=ArrayAgg('productbase__name'),product_ids=ArrayAgg('productbase_id'))
+        product_sets = list(qs.values('products', 'product_ids'))
+        product_sets = [productset['products'] for productset in product_sets if select_product in productset['product_ids'] or select_product=='no']
+        if qs.count() == 0:
+            raise NoData('資料不足')
+        products_id_name_map = {}
+        labels = []
+        df = self.df_trans(product_sets)
+        rules_result = self.get_ass_rule(df)
+        if select_product != 'no':
+            rules_result = rules_result[rules_result['antecedents'].astype(str).str.contains(self.product_id_map[str(select_product)])]
+        if rules_result.shape[0] == 0:
+            raise NoData('無關聯資料')
+        antecedents_list = []
+        antecedents_list = self.get_rule_result(rules_result, 'antecedents')
+        consequents_list = []
+        consequents_list = self.get_rule_result(rules_result, 'consequents')
+        pre_labels = list(zip(antecedents_list, consequents_list))
+        labels = [' + '.join(list(label)) for label in pre_labels]
+
+        self.set_labels(labels)
+        res_data = []
+        res_data = self.get_rule_result(rules_result, 'support')
+        now = timezone.now()
+        self.notes.update({
+                'tooltip_value': '{data} 分數',
+                'tooltip_name': ' '
+            })
+
+        self.create_label(data=res_data, notes=self.notes)
+
+
+@overview_charts.chart(name='商品併買lift圖表')
+class ProductAssLiftBar(BarChart):
+    product_id_map = {}
+    def __init__(self):
+        super().__init__()
+
+    def init_user(self):
+        product_selection = DropDownCondition('品牌')
+        products = self.get_product_data()
+
+        if not products:
+             product_selection.choice(*products).default('no product')
+        else:
+            product_selection.choice(*products).default(products[0]['id'])
+
+        self.add_options(products=product_selection)
+
+
+    def get_product_data(self):
+        product_data = []
+        product_data.append({'id': 'no', 'text': '未選擇'})
+        product_set = RetailProduct.objects.filter(removed='False').values('id','name')
+        for item in product_set:
+            id_name_map = {}
+            id_name_map['id'] = item['id']
+            id_name_map['text'] = item['name']
+            if item['id'] not in self.product_id_map:
+                self.product_id_map[str(item['id'])] = item['name']
+            product_data.append(id_name_map)
+        return product_data
+
+    def explain_x(self):
+        return 'antecedent'
+
+    def explain_y(self):
+        return 'lift'
+
+    def df_trans(self, product_sets):
+        dt = product_sets
+        te = TransactionEncoder()
+        te_ary = te.fit(dt).transform(dt)
+        df = pd.DataFrame(te_ary, columns=te.columns_)
+        return df
+
+    def get_ass_rule(self, df):
+        min_support = 1.0
+        active = True
+        rules = None
+        while min_support > 0:
+            frequent_itemsets = fpgrowth(df, min_support=min_support, use_colnames=True, max_len=2)
+            if frequent_itemsets.shape[0] != 0:
+                # frequent_itemsets.sort_values(by='lift', ascending=False, inplace=True)
+                rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=0.7)
+                rules.sort_values(by='lift', ascending=False, inplace=True)
+            if min_support >0.2:
+                min_support -= 0.1
+            else:
+                min_support -= 0.01
+                min_support = float(format(min_support, '.2f'))
+            if min_support <= 0.01:
+                break
+            if frequent_itemsets.shape[0] != 0:
+                if rules.shape[0] >= 10:
+                    return rules
+        if rules is None:
+            raise NoData('沒有資料')
+        return rules
+
+    def get_rule_result(self, rules_result, title):
+        result_list = []
+        if rules_result.shape[0] >= 10:
+            for data in rules_result.head(11)[title]:
+                if title != 'lift':
+                    result_list.append('_'.join(list(data)))
+                else:
+                    result_list.append(float('%.2f' % data))
+        else:
+            for data in rules_result.head(rules_result.shape[0] + 1)[title]:
+                if title != 'lift':
+                    result_list.append('_'.join(list(data)))
+                else:
+                    result_list.append(float('%.2f' % data))
+        return result_list
+
+
+    def draw(self):
+        self.add_annotation(y=1)
+        select_product = self.options.get('products')
+        if select_product != 'no':
+            select_product = int(select_product)
+        qs = OrderProduct.objects.prefetch_related('productbase').prefetch_related('purchasebase')
+        qs = qs.values('purchasebase_id').annotate(products=ArrayAgg('productbase__name'),product_ids=ArrayAgg('productbase_id'))
+        product_sets = list(qs.values('products', 'product_ids'))
+        product_sets = [productset['products'] for productset in product_sets if select_product in productset['product_ids'] or select_product=='no']
+        if qs.count() == 0:
+            raise NoData('資料不足')
+        products_id_name_map = {}
+        labels = []
+        df = self.df_trans(product_sets)
+        rules_result = self.get_ass_rule(df)
+        if select_product != 'no':
+            rules_result = rules_result[rules_result['antecedents'].astype(str).str.contains(self.product_id_map[str(select_product)])]
+        if rules_result.shape[0] == 0:
+            raise NoData('無關聯資料')
+        antecedents_list = []
+        antecedents_list = self.get_rule_result(rules_result, 'antecedents')
+        consequents_list = []
+        consequents_list = self.get_rule_result(rules_result, 'consequents')
+        pre_labels = list(zip(antecedents_list, consequents_list))
+        labels = [' + '.join(list(label)) for label in pre_labels]
+
+        self.set_labels(labels)
+        res_data = []
+        res_data = self.get_rule_result(rules_result, 'lift')
+        now = timezone.now()
+        self.notes.update({
+                'tooltip_value': '{data} 分數',
+                'tooltip_name': ' '
+            })
+
+        self.create_label(data=res_data, notes=self.notes)
 
 
 @past_charts.chart(name='交易人數往期直條圖')
@@ -1529,7 +1779,7 @@ class PurchaseMemberCount(BarChart):
         self.trace_days = self.options.get('trace_days', self.trace_days)
         purchasebase_qs = PurchaseBase.objects.filter(removed=False)
         if not purchasebase_qs.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         data = []
         now = timezone.now()
         for days in self.trace_days:
@@ -1627,7 +1877,7 @@ class PurchaseNumberCount(BarChart):
         now = timezone.now()
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
         if not purchase_base_set.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         for days in self.trace_days:
             date = now - datetime.timedelta(days=days)
             result = self.get_data_router(select_option, purchase_base_set, date)
@@ -1677,7 +1927,7 @@ class PurchaseOrderCount(BarChart):
         now = timezone.now()
         purchase_base_set = PurchaseBase.objects.filter(removed=False)
         if not purchase_base_set.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         self.set_total(len(purchase_base_set))
         for days in self.trace_days:
             date = now - datetime.timedelta(days=days)
@@ -1888,7 +2138,7 @@ class PurchasePriceTrend(LineChart):
         else:
             purchase_base_qs = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
         if not purchase_base_qs.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         date_start, date_end = self.get_date_range('time_range')
         date_list = self.get_per_date_list(date_start, date_end)
         self.set_date_range(date_start, date_end)
@@ -1900,7 +2150,7 @@ class PurchasePriceTrend(LineChart):
             data.append(result)
         data_check = set(data)
         if data_check == {0} or data_check == {None}:
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         self.notes.update({
                 'tooltip_value': '{data} 元',
                 'tooltip_name': ' '
@@ -1982,7 +2232,7 @@ class PurchaseMemberTrend(LineChart):
         else:
             purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
         if not purchase_base_set.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         date_start, date_end = self.get_date_range('time_range')
         date_list = self.get_per_date_list(date_start, date_end)
         self.set_date_range(date_start, date_end)
@@ -1995,7 +2245,7 @@ class PurchaseMemberTrend(LineChart):
 
         data_check = set(data)
         if data_check == {0} or data_check == {None}:
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
 
         self.notes.update({
                 'tooltip_value': '{data} 人',
@@ -2077,7 +2327,7 @@ class PurchaseOrderTrend(LineChart):
         else:
             purchase_base_set = PurchaseBase.objects.filter(removed=False).filter(brand__in=teamauth_brands)
         if not purchase_base_set.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         date_start, date_end = self.get_date_range('time_range')
         date_list = self.get_per_date_list(date_start, date_end)
         self.set_date_range(date_start, date_end)
@@ -2090,7 +2340,7 @@ class PurchaseOrderTrend(LineChart):
 
         data_check = set(data)
         if data_check == {0} or data_check == {None}:
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
 
         self.notes.update({
                 'tooltip_value': '{data} 單',
@@ -2130,7 +2380,7 @@ class PurchaseLevelHorBar(HorizontalBarChart):
                 )
             )
         if not purchasebase_qs.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         purchasebase_qs = purchasebase_qs.filter(current_level_name__isnull=False).values('current_level_name').annotate(total_price_sum=Sum('total_price'))
         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
         pre_data = [0] * len(member_level)
@@ -2153,7 +2403,7 @@ class PurchaseLevelHorBar(HorizontalBarChart):
             last_data = per_data
         data_check = list(filter(lambda per_data: per_data != [0,0], data))
         if len(data_check) == 0:
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
 
         notes = {
             'tooltip_value': '{data} 元',
@@ -2237,7 +2487,7 @@ class PurchaseLevelBar(BarChart):
 
         data_check = set(pre_data)
         if data_check == {0} or data_check == {None}:
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
 
         now = timezone.now()
         self.notes.update({
@@ -2290,7 +2540,7 @@ class PurchaseLevelCountBar(BarChart):
 
         data_check = set(pre_data)
         if data_check == {0} or data_check == {None}:
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
 
         now = timezone.now()
         self.notes.update({
@@ -2343,7 +2593,7 @@ class PurchaseLevelOrderBar(BarChart):
 
         data_check = set(pre_data)
         if data_check == {0} or data_check == {None}:
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
 
         now = timezone.now()
         self.notes.update({
@@ -3718,7 +3968,7 @@ class LevelPointGiveBar(BarChart):
         self.add_options(point_selection=point_selection)
 
     def explain_x(self):
-        return ' '
+        return '等級'
 
     def explain_y(self):
         return '點數'
@@ -3828,7 +4078,7 @@ class LevelPointExcBar(BarChart):
         self.add_options(point_selection=point_selection)
 
     def explain_x(self):
-        return ' '
+        return '等級'
 
     def explain_y(self):
         return '點數'
@@ -4007,7 +4257,7 @@ class LevelPointGiveTrend(BarChart):
             )
             #qs.values('is_transaction', 'current_level_name', 'amount')
         if not qs.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
 
         now = timezone.now()
         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
@@ -4132,7 +4382,7 @@ class LevelPointExcTrend(BarChart):
             )
             qs.values('is_transaction', 'current_level_name', 'amount')
         if not qs.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
 
         now = timezone.now()
         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
@@ -4244,7 +4494,7 @@ class PointGiveLevelTrend(LineChart):
             raise NoData('無設置交易選項')
 
         if not qs.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         now = timezone.now()
         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
         self.set_date_range(date_start, date_end)
@@ -4347,7 +4597,7 @@ class PointExcLevelTrend(LineChart):
             raise NoData('無設置交易選項')
 
         if not qs.exists():
-            raise NoData('尚無資料')
+            raise NoData('資料不足')
         now = timezone.now()
         member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
         self.set_date_range(date_start, date_end)
@@ -4374,7 +4624,7 @@ class Levels:
     name = '等級模組'
     charts = [
         MemberLevelPieChart.preset('等級人數圓餅圖'),
-        #LevelUpMatrMatrix.preset('等級升降續熱區圖'),
+        LevelUpMatrMatrix.preset('等級升降續熱區圖'),
         FutureLevelDue.preset('等級即將到期直條圖', width='full'),
         LevelClientCountTracing.preset('等級人數往期直條圖'),
         MemberLevelTrend.preset('等級人數折線圖', width='full'),
@@ -4390,7 +4640,7 @@ class Purchase:
         TurnOverCard.preset('營業額', group=GROUP_MEMBER_ORDERS),
         PurchaseMemberCard.preset('會員交易人數', group=GROUP_MEMBER_ORDERS),
         PurchaseMemberRateCard.preset('會員交易率', group=GROUP_MEMBER_ORDERS),
-        PurchaseCountCard.preset('交易筆數', group=GROUP_MEMBER_ORDERS),
+        PurchaseCountCard.preset('交易單數', group=GROUP_MEMBER_ORDERS),
         AvgPriceCard.preset('平均金額', group=ORDER_AVG_METRICS),
         AvgPerMemberCard.preset('客單價', group=ORDER_AVG_METRICS),
         PurchaseTimeHeatMap.preset('交易時間熱區圖', width='full'),
@@ -4404,6 +4654,8 @@ class Purchase:
         RepurchaseMemCountBar.preset('交易回購人數直條圖'),
         RepurchaseDayCountBar.preset('交易回購天數直條圖'),
         NESLHorBar.preset('NESL累計圖', width='full'),
+        ProductAssSupBar.preset('商品併買support圖表', width='full'),
+        ProductAssLiftBar.preset('商品併買lift圖表', width='full'),
         PurchaseMemberCount.preset('交易人數往期直條圖', chart_type='bar'),
         PurchaseNumberCount.preset('交易金額往期直條圖', chart_type='bar'),
         PurchaseOrderCount.preset('交易單數往期直條圖', chart_type='bar'),
@@ -4438,7 +4690,7 @@ class LevelsPurchase:
 
 @dashboard_preset
 class LevelPoint:
-    name = '等級 X 給點模組'
+    name = '等級 X 點數模組'
     charts = [
         LevelPointGiveBar.preset('等級給點直條圖'),
         LevelPointExcBar.preset('等級兑點直條圖'),

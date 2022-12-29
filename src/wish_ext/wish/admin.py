@@ -43,11 +43,44 @@ class BrandAdmin(admin.ModelAdmin):
 
     search_fields = ('name', 'external_id')
 
+@admin.register(OrderProduct)
+class RetailProductAdmin(admin.ModelAdmin):
+
+    list_display = (
+        'id',
+        'c_at',
+        'team',
+        'datalist_id',
+        'productbase',
+        'purchasebase',
+        'clientbase',
+        'refound',
+        'sale_price',
+        'quantity',
+        'total_price'
+    )
+
+    search_fields = ('name', 'external_id')
+
+@admin.register(RetailProduct)
+class RetailProductAdmin(admin.ModelAdmin):
+
+    list_display = (
+        'id',
+        'c_at',
+        'name',
+        'price',
+        'external_id',
+        'attributions'
+    )
+
+    search_fields = ('name', 'external_id')
+
 admin.site.register(LevelLogBase)
 admin.site.register(RepurchaseCycle)
 admin.site.register(ProductCategory)
-admin.site.register(RetailProduct)
+# admin.site.register(RetailProduct)
 admin.site.register(PurchaseBase)
-admin.site.register(OrderProduct)
+#admin.site.register(OrderProduct)
 admin.site.register(BrandAuth)
 admin.site.register(PointLogBase)
