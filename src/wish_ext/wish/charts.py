@@ -242,29 +242,56 @@ class LevelClientCountTracing(BarChart):
         return labels
 
     def draw(self):
-        self.trace_days = self.options.get('trace_days', self.trace_days)
-        now = timezone.now()
-        client_qs = self.team.clientbase_set.filter(removed=False)
-        if not client_qs.exists():
-            raise NoData('資料不足')
-        self.set_total(len(client_qs))
-        levels = MemberLevelBase.objects.filter(removed=False).order_by('rank').values_list('id', 'name')
-        for level_id, name in levels:
-            data = []
-            for days in self.trace_days:
-                date = now - datetime.timedelta(days=days)
-                qs = client_qs.annotate(
-                    current_level_id=Subquery(
-                        LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__lt=date).order_by('-from_datetime').values('to_level_id')[:1]
+        if self.options.get('table_mode'):
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            now = timezone.now()
+            client_qs = self.team.clientbase_set.filter(removed=False)
+            if not client_qs.exists():
+                raise NoData('資料不足')
+            self.set_total(len(client_qs))
+            levels = MemberLevelBase.objects.filter(removed=False).order_by('rank').values_list('id', 'name')
+            for level_id, name in levels:
+                data = []
+                for days in self.trace_days:
+                    date = now - datetime.timedelta(days=days)
+                    qs = client_qs.annotate(
+                        current_level_id=Subquery(
+                            LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__lt=date).order_by('-from_datetime').values('to_level_id')[:1]
+                        )
                     )
-                )
-                clients = qs.filter(current_level_id=level_id)
-                data.append(clients.count())
-            notes = {
-                'tooltip_value': f'{name}會員人數<br>{{data}} 人',
-                'tooltip_name': ' '
-            }
-            self.create_label(name=name, data=data, notes=notes)
+                    clients = qs.filter(current_level_id=level_id)
+                    data.append(clients.count())
+                notes = {
+                    'tooltip_value': f'{name}會員人數<br>{{data}} 人',
+                    'tooltip_name': ' '
+                }
+                data = [str(per_data) + '(' + '{:.1%}'.format(per_data/data[-1]) + ')'\
+                if data[-1] != 0 else str(per_data) + '(0.0%)' for per_data in data]
+                self.create_label(name=name, data=data, notes=notes)
+        else:
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            now = timezone.now()
+            client_qs = self.team.clientbase_set.filter(removed=False)
+            if not client_qs.exists():
+                raise NoData('資料不足')
+            self.set_total(len(client_qs))
+            levels = MemberLevelBase.objects.filter(removed=False).order_by('rank').values_list('id', 'name')
+            for level_id, name in levels:
+                data = []
+                for days in self.trace_days:
+                    date = now - datetime.timedelta(days=days)
+                    qs = client_qs.annotate(
+                        current_level_id=Subquery(
+                            LevelLogBase.objects.filter(clientbase_id=OuterRef('id'), from_datetime__lt=date).order_by('-from_datetime').values('to_level_id')[:1]
+                        )
+                    )
+                    clients = qs.filter(current_level_id=level_id)
+                    data.append(clients.count())
+                notes = {
+                    'tooltip_value': f'{name}會員人數<br>{{data}} 人',
+                    'tooltip_name': ' '
+                }
+                self.create_label(name=name, data=data, notes=notes)
 
 @trend_charts.chart(name='等級人數折線圖')
 class MemberLevelTrend(LineChart):
