@@ -3584,22 +3584,20 @@ class PurchaseLevelPurchaseCount(BarChart):
             if level != 'no_levels':
                 purchasebase_qs = purchasebase_qs.filter(current_level_name=id_level_map[int(level)])
             select_option = self.options.get('select_option','')
-            last_date = now - datetime.timedelta(days=1)
-            last_date_res = self.get_data_router(select_option,purchasebase_qs, last_date)
             for days in self.trace_days:
                 date = now - datetime.timedelta(days=days)
                 result = self.get_data_router(select_option,purchasebase_qs, date)
-                if last_date_res != 0:
-                    result = str(result) + '(' + '{:.1%}'.format(result/last_date_res) + ')'
-                else:
-                    result = str(result) + '(0.0%)'
-                data.append(result)
+                if result is None:
+                    result = 0
+                data.append(int(result))
             check_data = set(data)
             if check_data == {0} or check_data == {None}:
                 raise NoData('資料不足')
             notes = {
                 'tooltip_value': '{data} 元'
             }
+            data = [str(per_data) + '(' + '{:.1%}'.format(per_data / data[-1]) + ')'\
+                if data[-1] != 0 else str(per_data) + '(0.0%)' for per_data in data]
 
             self.create_label(name='', data=data, notes=notes)
         else:
@@ -3680,9 +3678,9 @@ class PurchaseLevelMemberCount(BarChart):
                 raise NoData('資料不足')
 
             now = timezone.now()
-            last_date = now - datetime.timedelta(days=1)
-            last_date_res = clients = purchasebase_qs.filter(current_level_name=level).values('clientbase_id').distinct().filter(datetime__lt=last_date).count()
             for level in member_level:
+                last_date = now - datetime.timedelta(days=1)
+                last_date_res = clients = purchasebase_qs.filter(current_level_name=level).values('clientbase_id').distinct().filter(datetime__lt=last_date).count()
                 data = [0] * len(self.trace_days)
                 for idx, days in enumerate(self.trace_days):
                     date = now - datetime.timedelta(days=days)
@@ -3766,9 +3764,9 @@ class PurchaseLevelOrderTrend(BarChart):
             if not purchasebase_qs.exists():
                 raise NoData('資料不足')
             now = timezone.now()
-            last_date = now - datetime.timedelta(days=1)
-            last_date_res = purchasebase_qs.filter(current_level_name=level).values('id').filter(datetime__lt=last_date).count()
             for level in member_level:
+                last_date = now - datetime.timedelta(days=1)
+                last_date_res = purchasebase_qs.filter(current_level_name=level).values('id').filter(datetime__lt=last_date).count()
                 data = [0] * len(self.trace_days)
                 for idx, days in enumerate(self.trace_days):
                     date = now - datetime.timedelta(days=days)
@@ -3780,6 +3778,7 @@ class PurchaseLevelOrderTrend(BarChart):
                 notes = {
                     'tooltip_value': f'{{data}} 單'
                 }
+                print('data: ', data)
 
                 self.create_label(name=level, data=data, notes=notes)
         else:
