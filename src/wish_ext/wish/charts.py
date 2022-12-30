@@ -3778,7 +3778,6 @@ class PurchaseLevelOrderTrend(BarChart):
                 notes = {
                     'tooltip_value': f'{{data}} 單'
                 }
-                print('data: ', data)
 
                 self.create_label(name=level, data=data, notes=notes)
         else:
