@@ -1776,21 +1776,44 @@ class PurchaseMemberCount(BarChart):
         return labels
 
     def draw(self):
-        self.trace_days = self.options.get('trace_days', self.trace_days)
-        purchasebase_qs = PurchaseBase.objects.filter(removed=False)
-        if not purchasebase_qs.exists():
-            raise NoData('資料不足')
-        data = []
-        now = timezone.now()
-        for days in self.trace_days:
-            date = now - datetime.timedelta(days=days)
-            clients = purchasebase_qs.filter(removed=False).values('clientbase_id').distinct().filter(datetime__lt=date)
-            data.append(clients.count())
-        notes = {
-            'tooltip_value': f'{{data}} 人'
-        }
+        if self.options.get('table_mode'):
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            purchasebase_qs = PurchaseBase.objects.filter(removed=False)
+            if not purchasebase_qs.exists():
+                raise NoData('資料不足')
+            data = []
+            now = timezone.now()
+            last_date = now - datetime.timedelta(days=1)
+            last_date_count_res = purchasebase_qs.filter(removed=False).values('clientbase_id').distinct().filter(datetime__lt=last_date).count()
+            for days in self.trace_days:
+                date = now - datetime.timedelta(days=days)
+                clients_count_res = purchasebase_qs.filter(removed=False).values('clientbase_id').distinct().filter(datetime__lt=date).count()
+                if last_date_count_res != 0:
+                    clients_count_res = str(clients_count_res) + '(' + '{:.1%}'.format(clients_count_res/last_date_count_res) + ')'
+                else:
+                    clients_count_res = str(clients_count_res) + '(0.0%)'
+                data.append(clients_count_res)
+            notes = {
+                'tooltip_value': '{data} 人'
+            }
 
-        self.create_label(name=' ', data=data, notes=notes)
+            self.create_label(name='人數', data=data, notes=notes)
+        else:
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            purchasebase_qs = PurchaseBase.objects.filter(removed=False)
+            if not purchasebase_qs.exists():
+                raise NoData('資料不足')
+            data = []
+            now = timezone.now()
+            for days in self.trace_days:
+                date = now - datetime.timedelta(days=days)
+                clients = purchasebase_qs.filter(removed=False).values('clientbase_id').distinct().filter(datetime__lt=date)
+                data.append(clients.count())
+            notes = {
+                'tooltip_value': '{data} 人'
+            }
+
+            self.create_label(name=' ', data=data, notes=notes)
 
 
 @past_charts.chart(name='交易金額往期直條圖')
@@ -1798,6 +1821,7 @@ class PurchaseNumberCount(BarChart):
     TURNOVER = 'turnover'
     PERCUSPRICE = 'per_cus_price'
     AVGPRICE = 'avg_price'
+    final_result = None
     '''
     Hidden options:
         -trace_days:
@@ -1870,23 +1894,48 @@ class PurchaseNumberCount(BarChart):
             labels.append(date_string)
         return labels
 
-    def draw(self):
-        select_option = self.options.get('select_option', '未設定')
-        self.trace_days = self.options.get('trace_days', self.trace_days)
-        data = []
-        now = timezone.now()
-        purchase_base_set = PurchaseBase.objects.filter(removed=False)
-        if not purchase_base_set.exists():
-            raise NoData('資料不足')
-        for days in self.trace_days:
-            date = now - datetime.timedelta(days=days)
-            result = self.get_data_router(select_option, purchase_base_set, date)
-            data.append(result)
-        notes = {
-            'tooltip_value': '{data} 元'
-        }
 
-        self.create_label(name='', data=data, notes=notes)
+    def draw(self):
+        if self.options.get('table_mode'):
+            select_option = self.options.get('select_option', '未設定')
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            data = []
+            now = timezone.now()
+            last_date = now - datetime.timedelta(days=1)
+            purchase_base_set = PurchaseBase.objects.filter(removed=False)
+            last_date_res = self.get_data_router(select_option, purchase_base_set, last_date)
+            if not purchase_base_set.exists():
+                raise NoData('資料不足')
+            for days in self.trace_days:
+                date = now - datetime.timedelta(days=days)
+                result = self.get_data_router(select_option, purchase_base_set, date)
+                if last_date_res != 0:
+                    result = str(int(result)) + '(' + '{:.1%}'.format(result/last_date_res) + ')'
+                else:
+                    result = str(int(result)) + '(0.0%)'
+                data.append(result)
+            self.notes.update({
+                'tooltip_value': '{data} 元'
+            })
+
+            self.create_label(name='營業額', data=data, notes=self.notes)
+        else:
+            select_option = self.options.get('select_option', '未設定')
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            data = []
+            now = timezone.now()
+            purchase_base_set = PurchaseBase.objects.filter(removed=False)
+            if not purchase_base_set.exists():
+                raise NoData('資料不足')
+            for days in self.trace_days:
+                date = now - datetime.timedelta(days=days)
+                result = self.get_data_router(select_option, purchase_base_set, date)
+                data.append(result)
+            notes = {
+                'tooltip_value': '{data} 元'
+            }
+
+            self.create_label(name='', data=data, notes=notes)
 
 @past_charts.chart(name='交易單數往期直條圖')
 class PurchaseOrderCount(BarChart):
@@ -1922,22 +1971,46 @@ class PurchaseOrderCount(BarChart):
         return labels
 
     def draw(self):
-        self.trace_days = self.options.get('trace_days', self.trace_days)
-        data = []
-        now = timezone.now()
-        purchase_base_set = PurchaseBase.objects.filter(removed=False)
-        if not purchase_base_set.exists():
-            raise NoData('資料不足')
-        self.set_total(len(purchase_base_set))
-        for days in self.trace_days:
-            date = now - datetime.timedelta(days=days)
-            purchase_base = purchase_base_set.filter(datetime__lt=date)
-            data.append(purchase_base.count())
-        notes = {
-            'tooltip_value': f'{{data}} 單'
-        }
+        if self.options.get('table_mode'):
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            data = []
+            now = timezone.now()
+            purchase_base_set = PurchaseBase.objects.filter(removed=False)
+            if not purchase_base_set.exists():
+                raise NoData('資料不足')
+            self.set_total(len(purchase_base_set))
+            last_date = now - datetime.timedelta(days=1)
+            last_date_count_res = purchase_base_set.filter(datetime__lt=last_date).count()
+            for days in self.trace_days:
+                date = now - datetime.timedelta(days=days)
+                purchase_base_count_res = purchase_base_set.filter(datetime__lt=date).count()
+                if last_date_count_res != 0:
+                    purchase_base_count_res = str(purchase_base_count_res) + '(' + '{:.1%}'.format(purchase_base_count_res/last_date_count_res) + ')'
+                else:
+                    purchase_base_count_res = str(purchase_base_count_res) + '(0.0%)'
+                data.append(purchase_base_count_res)
+            notes = {
+                'tooltip_value': f'{{data}} 單'
+            }
 
-        self.create_label(name=' ', data=data, notes=notes)
+            self.create_label(name='交易單數', data=data, notes=notes)
+        else:
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            data = []
+            now = timezone.now()
+            purchase_base_set = PurchaseBase.objects.filter(removed=False)
+            if not purchase_base_set.exists():
+                raise NoData('資料不足')
+            self.set_total(len(purchase_base_set))
+            for days in self.trace_days:
+                date = now - datetime.timedelta(days=days)
+                purchase_base = purchase_base_set.filter(datetime__lt=date)
+                data.append(purchase_base.count())
+            notes = {
+                'tooltip_value': f'{{data}} 單'
+            }
+
+            self.create_label(name=' ', data=data, notes=notes)
 
 @past_charts.chart(name='NESL往期直條圖')
 class NESLCount(BarChart):
@@ -1972,56 +2045,110 @@ class NESLCount(BarChart):
             labels.append(date_string)
         return labels
 
+    def get_res(self):
+        pass
+
     def draw(self):
         self.trace_days = self.options.get('trace_days', self.trace_days)
         now = timezone.now()
         levels = ['N','E','S','L']
-        for level in levels:
-            data = []
-            for days in self.trace_days:
-                date = now - datetime.timedelta(days=days)
-                date_range_in_ne_group = [(date - datetime.timedelta(days=90)), date]
-                date_range_in_sl_group = [(date - datetime.timedelta(days=365)), date - datetime.timedelta(days=120)]
-                purchase_set = PurchaseBase.objects.filter(removed=False)
-                # get NE group data in range
-                purchasebase_ne_group=purchase_set.filter(datetime__lte=date_range_in_ne_group[1], datetime__gte=date_range_in_ne_group[0])
-                # get SL group data in range
-                purchasebase_sl_group=purchase_set.filter(datetime__lte=date_range_in_sl_group[1], datetime__gte=date_range_in_sl_group[0])
-                # get all NE group clients id
-                purchasebase_ne_group_cli_id = purchasebase_ne_group.values_list('clientbase_id',flat=True)
-                # get all SL group
-                purchasebase_sl_group_cli_id = purchasebase_sl_group.values_list('clientbase_id',flat=True)
-                # get real NE data(exclude SL data)
-                ne_group_id = purchasebase_ne_group_cli_id.exclude(clientbase_id__in=list(purchasebase_sl_group_cli_id))
-                # get real SL data(exclude NE data)
-                sl_group_id = purchasebase_sl_group_cli_id.exclude(clientbase_id__in=list(purchasebase_ne_group_cli_id))
-                # get NE count data
-                ne_group_count = ne_group_id.annotate(Count('clientbase_id')).values('clientbase_id','clientbase_id__count')
-                # get SL count data
-                sl_group_count = sl_group_id.annotate(Count('clientbase_id')).values('clientbase_id','clientbase_id__count')
-                # S count
-                s_count = sl_group_count.filter(clientbase_id__count=1).count()
-                # L count
-                l_count = sl_group_count.exclude(clientbase_id__count=1).count()
-                # N count
-                n_count = ne_group_count.filter(clientbase_id__count=1).count()
-                # E count
-                e_count = ne_group_count.exclude(clientbase_id__count=1).count()
+        if self.options.get('table_mode'):
+            for level in levels:
+                data = []
+                for days in self.trace_days:
+                    date = now - datetime.timedelta(days=days)
+                    date_range_in_ne_group = [(date - datetime.timedelta(days=90)), date]
+                    date_range_in_sl_group = [(date - datetime.timedelta(days=365)), date - datetime.timedelta(days=120)]
+                    purchase_set = PurchaseBase.objects.filter(removed=False)
+                    # get NE group data in range
+                    purchasebase_ne_group=purchase_set.filter(datetime__lte=date_range_in_ne_group[1], datetime__gte=date_range_in_ne_group[0])
+                    # get SL group data in range
+                    purchasebase_sl_group=purchase_set.filter(datetime__lte=date_range_in_sl_group[1], datetime__gte=date_range_in_sl_group[0])
+                    # get all NE group clients id
+                    purchasebase_ne_group_cli_id = purchasebase_ne_group.values_list('clientbase_id',flat=True)
+                    # get all SL group
+                    purchasebase_sl_group_cli_id = purchasebase_sl_group.values_list('clientbase_id',flat=True)
+                    # get real NE data(exclude SL data)
+                    ne_group_id = purchasebase_ne_group_cli_id.exclude(clientbase_id__in=list(purchasebase_sl_group_cli_id))
+                    # get real SL data(exclude NE data)
+                    sl_group_id = purchasebase_sl_group_cli_id.exclude(clientbase_id__in=list(purchasebase_ne_group_cli_id))
+                    # get NE count data
+                    ne_group_count = ne_group_id.annotate(Count('clientbase_id')).values('clientbase_id','clientbase_id__count')
+                    # get SL count data
+                    sl_group_count = sl_group_id.annotate(Count('clientbase_id')).values('clientbase_id','clientbase_id__count')
+                    # S count
+                    s_count = sl_group_count.filter(clientbase_id__count=1).count()
+                    # L count
+                    l_count = sl_group_count.exclude(clientbase_id__count=1).count()
+                    # N count
+                    n_count = ne_group_count.filter(clientbase_id__count=1).count()
+                    # E count
+                    e_count = ne_group_count.exclude(clientbase_id__count=1).count()
 
-                # jugde data
-                if level == 'N':
-                    data.append(n_count)
-                elif level == 'E':
-                    data.append(e_count)
-                elif level == 'S':
-                    data.append(s_count)
-                else:
-                    data.append(l_count)
-            notes = {
-                'tooltip_value': '{data} 人',
-                'tooltip_name': ' '
-            }
-            self.create_label(name=level, data=data, notes=notes)
+                    # jugde data
+                    if level == 'N':
+                        data.append(n_count)
+                    elif level == 'E':
+                        data.append(e_count)
+                    elif level == 'S':
+                        data.append(s_count)
+                    else:
+                        data.append(l_count)
+                sum_data = sum(data)
+                data = [str(per_data) + '(' + '{:.1%}'.format(per_data/sum_data) + ')'\
+                if sum_data != 0 else str(per_data) + '(0.0%)' for per_data in data]
+                notes = {
+                    'tooltip_value': '{data} 人',
+                    'tooltip_name': ' '
+                }
+                self.create_label(name=level, data=data, notes=notes)
+        else:
+            for level in levels:
+                data = []
+                for days in self.trace_days:
+                    date = now - datetime.timedelta(days=days)
+                    date_range_in_ne_group = [(date - datetime.timedelta(days=90)), date]
+                    date_range_in_sl_group = [(date - datetime.timedelta(days=365)), date - datetime.timedelta(days=120)]
+                    purchase_set = PurchaseBase.objects.filter(removed=False)
+                    # get NE group data in range
+                    purchasebase_ne_group=purchase_set.filter(datetime__lte=date_range_in_ne_group[1], datetime__gte=date_range_in_ne_group[0])
+                    # get SL group data in range
+                    purchasebase_sl_group=purchase_set.filter(datetime__lte=date_range_in_sl_group[1], datetime__gte=date_range_in_sl_group[0])
+                    # get all NE group clients id
+                    purchasebase_ne_group_cli_id = purchasebase_ne_group.values_list('clientbase_id',flat=True)
+                    # get all SL group
+                    purchasebase_sl_group_cli_id = purchasebase_sl_group.values_list('clientbase_id',flat=True)
+                    # get real NE data(exclude SL data)
+                    ne_group_id = purchasebase_ne_group_cli_id.exclude(clientbase_id__in=list(purchasebase_sl_group_cli_id))
+                    # get real SL data(exclude NE data)
+                    sl_group_id = purchasebase_sl_group_cli_id.exclude(clientbase_id__in=list(purchasebase_ne_group_cli_id))
+                    # get NE count data
+                    ne_group_count = ne_group_id.annotate(Count('clientbase_id')).values('clientbase_id','clientbase_id__count')
+                    # get SL count data
+                    sl_group_count = sl_group_id.annotate(Count('clientbase_id')).values('clientbase_id','clientbase_id__count')
+                    # S count
+                    s_count = sl_group_count.filter(clientbase_id__count=1).count()
+                    # L count
+                    l_count = sl_group_count.exclude(clientbase_id__count=1).count()
+                    # N count
+                    n_count = ne_group_count.filter(clientbase_id__count=1).count()
+                    # E count
+                    e_count = ne_group_count.exclude(clientbase_id__count=1).count()
+
+                    # jugde data
+                    if level == 'N':
+                        data.append(n_count)
+                    elif level == 'E':
+                        data.append(e_count)
+                    elif level == 'S':
+                        data.append(s_count)
+                    else:
+                        data.append(l_count)
+                notes = {
+                    'tooltip_value': '{data} 人',
+                    'tooltip_name': ' '
+                }
+                self.create_label(name=level, data=data, notes=notes)
 
 
 @trend_charts.chart(name='交易金額折線圖(集團)')
@@ -2466,36 +2593,70 @@ class PurchaseLevelBar(BarChart):
 
 
     def draw(self):
-        date_start, date_end = self.get_date_range('time_range')
-        select_option = self.options.get('select_option')
-        purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(datetime__gte=date_start, datetime__lte=date_end).annotate(
-            current_level_name=Subquery(
-                LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
+        if self.options.get('table_mode'):
+            date_start, date_end = self.get_date_range('time_range')
+            select_option = self.options.get('select_option')
+            purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(datetime__gte=date_start, datetime__lte=date_end).annotate(
+                current_level_name=Subquery(
+                    LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
+                    )
                 )
-            )
-        if not purchasebase_qs.exists():
-            raise NoData('資料不足')
-        result_qs = self.get_data_router(select_option, purchasebase_qs)
-        member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
-        pre_data = [0] * len(member_level)
-        self.set_labels(member_level)
-        level_index_map = self.get_level_map(member_level)
-        for per_data in result_qs:
-            temp_value = pre_data[level_index_map[per_data['current_level_name']]]
-            temp_value += per_data['value']
-            pre_data[level_index_map[per_data['current_level_name']]] = temp_value
+            if not purchasebase_qs.exists():
+                raise NoData('資料不足')
+            result_qs = self.get_data_router(select_option, purchasebase_qs)
+            member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
+            pre_data = [0] * len(member_level)
+            self.set_labels(member_level)
+            level_index_map = self.get_level_map(member_level)
+            for per_data in result_qs:
+                temp_value = pre_data[level_index_map[per_data['current_level_name']]]
+                temp_value += per_data['value']
+                pre_data[level_index_map[per_data['current_level_name']]] = temp_value
 
-        data_check = set(pre_data)
-        if data_check == {0} or data_check == {None}:
-            raise NoData('資料不足')
+            data_check = set(pre_data)
+            if data_check == {0} or data_check == {None}:
+                raise NoData('資料不足')
 
-        now = timezone.now()
-        self.notes.update({
-                'tooltip_value': '交易金額 <br> {data} 元',
-                'tooltip_name': ' '
-            })
+            now = timezone.now()
+            notes = {
+                    'tooltip_value': '交易金額 <br> {data} 元',
+                    'tooltip_name': ' '
+                }
+            sum_data = sum(pre_data)
+            pre_data = [str(per_data) + '(' + '{:.1%}'.format(result/last_date_res) + ')'\
+                if sum_data != 0 else str(per_data) + '(0.0%)' for per_data in pre_data]
+            self.create_label(data=pre_data, notes=notes)
+        else:
+            date_start, date_end = self.get_date_range('time_range')
+            select_option = self.options.get('select_option')
+            purchasebase_qs = PurchaseBase.objects.filter(removed=False).filter(datetime__gte=date_start, datetime__lte=date_end).annotate(
+                current_level_name=Subquery(
+                    LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id'), from_datetime__gte=date_start, from_datetime__lte=date_end).order_by('-from_datetime').values('to_level__name')[:1]
+                    )
+                )
+            if not purchasebase_qs.exists():
+                raise NoData('資料不足')
+            result_qs = self.get_data_router(select_option, purchasebase_qs)
+            member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
+            pre_data = [0] * len(member_level)
+            self.set_labels(member_level)
+            level_index_map = self.get_level_map(member_level)
+            for per_data in result_qs:
+                temp_value = pre_data[level_index_map[per_data['current_level_name']]]
+                temp_value += per_data['value']
+                pre_data[level_index_map[per_data['current_level_name']]] = temp_value
 
-        self.create_label(data=pre_data, notes=self.notes)
+            data_check = set(pre_data)
+            if data_check == {0} or data_check == {None}:
+                raise NoData('資料不足')
+
+            now = timezone.now()
+            self.notes.update({
+                    'tooltip_value': '交易金額 <br> {data} 元',
+                    'tooltip_name': ' '
+                })
+
+            self.create_label(data=pre_data, notes=self.notes)
 
 @overview_charts.chart(name='交易等級人數直條圖')
 class PurchaseLevelCountBar(BarChart):
@@ -3406,34 +3567,70 @@ class PurchaseLevelPurchaseCount(BarChart):
         return {level['id']:level['name'] for level in member_level}
 
     def draw(self):
-        member_level = MemberLevelBase.objects.values('id','name')
-        level = self.options.get('levels')
-        id_level_map = self.get_id_level_map(member_level)
-        self.trace_days = self.options.get('trace_days', self.trace_days)
-        data = []
-        now = timezone.now()
-        purchasebase_qs = PurchaseBase.objects.filter(removed=False).annotate(
-            current_level_name=Subquery(
-                LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+        if self.options.get('table_mode'):
+            member_level = MemberLevelBase.objects.values('id','name')
+            level = self.options.get('levels')
+            id_level_map = self.get_id_level_map(member_level)
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            data = []
+            now = timezone.now()
+            purchasebase_qs = PurchaseBase.objects.filter(removed=False).annotate(
+                current_level_name=Subquery(
+                    LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+                    )
                 )
-            )
-        if not purchasebase_qs.exists():
-            raise NoData('資料不足')
-        if level != 'no_levels':
-            purchasebase_qs = purchasebase_qs.filter(current_level_name=id_level_map[int(level)])
-        select_option = self.options.get('select_option','')
-        for days in self.trace_days:
-            date = now - datetime.timedelta(days=days)
-            result = self.get_data_router(select_option,purchasebase_qs, date)
-            data.append(result)
-        check_data = set(data)
-        if check_data == {0} or check_data == {None}:
-            raise NoData('資料不足')
-        notes = {
-            'tooltip_value': '{data} 元'
-        }
+            if not purchasebase_qs.exists():
+                raise NoData('資料不足')
+            if level != 'no_levels':
+                purchasebase_qs = purchasebase_qs.filter(current_level_name=id_level_map[int(level)])
+            select_option = self.options.get('select_option','')
+            last_date = now - datetime.timedelta(days=1)
+            last_date_res = self.get_data_router(select_option,purchasebase_qs, last_date)
+            for days in self.trace_days:
+                date = now - datetime.timedelta(days=days)
+                result = self.get_data_router(select_option,purchasebase_qs, date)
+                if last_date_res != 0:
+                    result = str(result) + '(' + '{:.1%}'.format(result/last_date_res) + ')'
+                else:
+                    result = str(result) + '(0.0%)'
+                data.append(result)
+            check_data = set(data)
+            if check_data == {0} or check_data == {None}:
+                raise NoData('資料不足')
+            notes = {
+                'tooltip_value': '{data} 元'
+            }
 
-        self.create_label(name='', data=data, notes=notes)
+            self.create_label(name='', data=data, notes=notes)
+        else:
+            member_level = MemberLevelBase.objects.values('id','name')
+            level = self.options.get('levels')
+            id_level_map = self.get_id_level_map(member_level)
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            data = []
+            now = timezone.now()
+            purchasebase_qs = PurchaseBase.objects.filter(removed=False).annotate(
+                current_level_name=Subquery(
+                    LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+                    )
+                )
+            if not purchasebase_qs.exists():
+                raise NoData('資料不足')
+            if level != 'no_levels':
+                purchasebase_qs = purchasebase_qs.filter(current_level_name=id_level_map[int(level)])
+            select_option = self.options.get('select_option','')
+            for days in self.trace_days:
+                date = now - datetime.timedelta(days=days)
+                result = self.get_data_router(select_option,purchasebase_qs, date)
+                data.append(result)
+            check_data = set(data)
+            if check_data == {0} or check_data == {None}:
+                raise NoData('資料不足')
+            notes = {
+                'tooltip_value': '{data} 元'
+            }
+
+            self.create_label(name='', data=data, notes=notes)
 
 
 @past_charts.chart(name='交易等級人數往期直條圖')
@@ -3471,28 +3668,57 @@ class PurchaseLevelMemberCount(BarChart):
         return labels
 
     def draw(self):
-        self.trace_days = self.options.get('trace_days', self.trace_days)
-        member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
-        purchasebase_qs = PurchaseBase.objects.filter(removed=False).annotate(
-            current_level_name=Subquery(
-                LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+        if self.options.get('table_mode'):
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
+            purchasebase_qs = PurchaseBase.objects.filter(removed=False).annotate(
+                current_level_name=Subquery(
+                    LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+                    )
                 )
-            )
-        if not purchasebase_qs.exists():
-            raise NoData('資料不足')
+            if not purchasebase_qs.exists():
+                raise NoData('資料不足')
 
-        now = timezone.now()
-        for level in member_level:
-            data = [0] * len(self.trace_days)
-            for idx, days in enumerate(self.trace_days):
-                date = now - datetime.timedelta(days=days)
-                clients = purchasebase_qs.filter(current_level_name=level).values('clientbase_id').distinct().filter(datetime__lt=date)
-                data[idx] = clients.count()
-            notes = {
-                'tooltip_value': f'{{data}} 人'
-            }
+            now = timezone.now()
+            last_date = now - datetime.timedelta(days=1)
+            last_date_res = clients = purchasebase_qs.filter(current_level_name=level).values('clientbase_id').distinct().filter(datetime__lt=last_date).count()
+            for level in member_level:
+                data = [0] * len(self.trace_days)
+                for idx, days in enumerate(self.trace_days):
+                    date = now - datetime.timedelta(days=days)
+                    clients_count_res = purchasebase_qs.filter(current_level_name=level).values('clientbase_id').distinct().filter(datetime__lt=date).count()
+                    if last_date_res != 0:
+                        data[idx] = str(clients_count_res) + '(' + '{:.1%}'.format(clients_count_res/last_date_res) + ')'
+                    else:
+                        data[idx] = str(clients_count_res) + '(0.0%)'
+                notes = {
+                    'tooltip_value': f'{{data}} 人'
+                }
 
-            self.create_label(name=level, data=data, notes=notes)
+                self.create_label(name=level, data=data, notes=notes)
+        else:
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
+            purchasebase_qs = PurchaseBase.objects.filter(removed=False).annotate(
+                current_level_name=Subquery(
+                    LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+                    )
+                )
+            if not purchasebase_qs.exists():
+                raise NoData('資料不足')
+
+            now = timezone.now()
+            for level in member_level:
+                data = [0] * len(self.trace_days)
+                for idx, days in enumerate(self.trace_days):
+                    date = now - datetime.timedelta(days=days)
+                    clients = purchasebase_qs.filter(current_level_name=level).values('clientbase_id').distinct().filter(datetime__lt=date)
+                    data[idx] = clients.count()
+                notes = {
+                    'tooltip_value': f'{{data}} 人'
+                }
+
+                self.create_label(name=level, data=data, notes=notes)
 
 @past_charts.chart(name='交易等級單數往期直條圖')
 class PurchaseLevelOrderTrend(BarChart):
@@ -3529,27 +3755,55 @@ class PurchaseLevelOrderTrend(BarChart):
         return labels
 
     def draw(self):
-        self.trace_days = self.options.get('trace_days', self.trace_days)
-        member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
-        purchasebase_qs = PurchaseBase.objects.filter(removed=False).annotate(
-            current_level_name=Subquery(
-                LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+        if self.options.get('table_mode'):
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
+            purchasebase_qs = PurchaseBase.objects.filter(removed=False).annotate(
+                current_level_name=Subquery(
+                    LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+                    )
                 )
-            )
-        if not purchasebase_qs.exists():
-            raise NoData('資料不足')
-        now = timezone.now()
-        for level in member_level:
-            data = [0] * len(self.trace_days)
-            for idx, days in enumerate(self.trace_days):
-                date = now - datetime.timedelta(days=days)
-                clients = purchasebase_qs.filter(current_level_name=level).values('id').filter(datetime__lt=date)
-                data[idx] = clients.count()
-            notes = {
-                'tooltip_value': f'{{data}} 單'
-            }
+            if not purchasebase_qs.exists():
+                raise NoData('資料不足')
+            now = timezone.now()
+            last_date = now - datetime.timedelta(days=1)
+            last_date_res = purchasebase_qs.filter(current_level_name=level).values('id').filter(datetime__lt=last_date).count()
+            for level in member_level:
+                data = [0] * len(self.trace_days)
+                for idx, days in enumerate(self.trace_days):
+                    date = now - datetime.timedelta(days=days)
+                    clients_count_res = purchasebase_qs.filter(current_level_name=level).values('id').filter(datetime__lt=date).count()
+                    if last_date_res != 0:
+                        data[idx] = str(clients_count_res) + '(' + '{:.1%}'.format(clients_count_res/last_date_res) + ')'
+                    else:
+                        data[idx] = str(clients_count_res) + '(0.0%)'
+                notes = {
+                    'tooltip_value': f'{{data}} 單'
+                }
 
-            self.create_label(name=level, data=data, notes=notes)
+                self.create_label(name=level, data=data, notes=notes)
+        else:
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
+            purchasebase_qs = PurchaseBase.objects.filter(removed=False).annotate(
+                current_level_name=Subquery(
+                    LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+                    )
+                )
+            if not purchasebase_qs.exists():
+                raise NoData('資料不足')
+            now = timezone.now()
+            for level in member_level:
+                data = [0] * len(self.trace_days)
+                for idx, days in enumerate(self.trace_days):
+                    date = now - datetime.timedelta(days=days)
+                    clients = purchasebase_qs.filter(current_level_name=level).values('id').filter(datetime__lt=date)
+                    data[idx] = clients.count()
+                notes = {
+                    'tooltip_value': f'{{data}} 單'
+                }
+
+                self.create_label(name=level, data=data, notes=notes)
 
 @trend_charts.chart(name='交易等級金額折線圖(集團)')
 class PurchaseLevelPriceTrend(LineChart):
@@ -4239,54 +4493,111 @@ class LevelPointGiveTrend(BarChart):
         return labels
 
     def draw(self):
-        point_selection = self.options.get('point_selection')
-        trans_option = self.options.get('trans_option')
-        self.trace_days = self.options.get('trace_days', self.trace_days)
-        if point_selection is None:
-            qs = PointLogBase.objects.filter(removed=False).annotate(
-            current_level_name=Subquery(
-                LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+        if self.options.get('table_mode'):
+            point_selection = self.options.get('point_selection')
+            trans_option = self.options.get('trans_option')
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            if point_selection is None:
+                qs = PointLogBase.objects.filter(removed=False).annotate(
+                current_level_name=Subquery(
+                    LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+                    )
                 )
-            )
-            qs.values('is_transaction', 'current_level_name', 'amount')
-        else:
-            qs = PointLogBase.objects.filter(removed=False).filter(point_name=self.point_id_name_map[int(point_selection)]).annotate(
-            current_level_name=Subquery(
-                LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
-                )
-            )
-            #qs.values('is_transaction', 'current_level_name', 'amount')
-        if not qs.exists():
-            raise NoData('資料不足')
-
-        now = timezone.now()
-        member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
-        data_check = []
-        for level in member_level:
-            if trans_option == self.TRANS:
-                is_trans = True
+                qs.values('is_transaction', 'current_level_name', 'amount')
             else:
-                is_trans = False
-            data = []
-            for days in self.trace_days:
-                date = now - datetime.timedelta(days=days)
-                qs_result_dict = qs.filter(current_level_name=level, is_transaction=is_trans).filter(amount__gt=0, datetime__lt=date).aggregate(value=Sum('amount'))
-                result = 0
-                if qs_result_dict.get('value'):
-                    result = qs_result_dict.get('value')
-                data.append(result)
-            notes = {
-                'tooltip_value': f'{{data}} 點'
-            }
-            data_check.append(set(data))
+                qs = PointLogBase.objects.filter(removed=False).filter(point_name=self.point_id_name_map[int(point_selection)]).annotate(
+                current_level_name=Subquery(
+                    LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+                    )
+                )
+            if not qs.exists():
+                raise NoData('資料不足')
 
-            self.create_label(name=level, data=data, notes=notes)
-        data_check_count = 0
-        for d_check in data_check:
-            if d_check == {0} or d_check == {None}:
-                data_check_count += 1
-        if data_check_count == len(data_check):
-            raise NoData('資料不足')
+            now = timezone.now()
+            member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
+            data_check = []
+            for level in member_level:
+                if trans_option == self.TRANS:
+                    is_trans = True
+                else:
+                    is_trans = False
+                data = []
+                last_date = now - datetime.timedelta(days=1)
+                last_date_res_dict = qs.filter(current_level_name=level, is_transaction=is_trans).filter(amount__gt=0, datetime__lt=last_date).aggregate(value=Sum('amount'))
+                last_date_res = 0
+                if last_date_res_dict.get('value'):
+                    last_date_res = last_date_res_dict.get('value')
+                for days in self.trace_days:
+                    date = now - datetime.timedelta(days=days)
+                    res_dict = qs.filter(current_level_name=level, is_transaction=is_trans).filter(amount__gt=0, datetime__lt=date).aggregate(value=Sum('amount'))
+                    result = 0
+                    if res_dict.get('value'):
+                        result = res_dict.get('value')
+                    if last_date_res != 0:
+                        result = str(result) + '(' + '{:.1%}'.format(result/last_date_res) + ')'
+                    else:
+                        result = str(result) + '(0.0%)'
+                    data.append(result)
+                notes = {
+                    'tooltip_value': f'{{data}} 點'
+                }
+                data_check.append(set(data))
+
+                self.create_label(name=level, data=data, notes=notes)
+            data_check_count = 0
+            for d_check in data_check:
+                if d_check == {0} or d_check == {None}:
+                    data_check_count += 1
+            if data_check_count == len(data_check):
+                raise NoData('資料不足')
+        else:
+            point_selection = self.options.get('point_selection')
+            trans_option = self.options.get('trans_option')
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            if point_selection is None:
+                qs = PointLogBase.objects.filter(removed=False).annotate(
+                current_level_name=Subquery(
+                    LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+                    )
+                )
+                qs.values('is_transaction', 'current_level_name', 'amount')
+            else:
+                qs = PointLogBase.objects.filter(removed=False).filter(point_name=self.point_id_name_map[int(point_selection)]).annotate(
+                current_level_name=Subquery(
+                    LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+                    )
+                )
+            if not qs.exists():
+                raise NoData('資料不足')
+
+            now = timezone.now()
+            member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
+            data_check = []
+            for level in member_level:
+                if trans_option == self.TRANS:
+                    is_trans = True
+                else:
+                    is_trans = False
+                data = []
+                for days in self.trace_days:
+                    date = now - datetime.timedelta(days=days)
+                    qs_result_dict = qs.filter(current_level_name=level, is_transaction=is_trans).filter(amount__gt=0, datetime__lt=date).aggregate(value=Sum('amount'))
+                    result = 0
+                    if qs_result_dict.get('value'):
+                        result = qs_result_dict.get('value')
+                    data.append(result)
+                notes = {
+                    'tooltip_value': f'{{data}} 點'
+                }
+                data_check.append(set(data))
+
+                self.create_label(name=level, data=data, notes=notes)
+            data_check_count = 0
+            for d_check in data_check:
+                if d_check == {0} or d_check == {None}:
+                    data_check_count += 1
+            if data_check_count == len(data_check):
+                raise NoData('資料不足')
 
 @past_charts.chart(name='等級兌點往期直條圖')
 class LevelPointExcTrend(BarChart):
@@ -4364,54 +4675,112 @@ class LevelPointExcTrend(BarChart):
         return labels
 
     def draw(self):
-        point_selection = self.options.get('point_selection')
-        trans_option = self.options.get('trans_option')
-        self.trace_days = self.options.get('trace_days', self.trace_days)
-        if point_selection is None:
-            qs = PointLogBase.objects.filter(removed=False).annotate(
-            current_level_name=Subquery(
-                LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+        if self.options.get('table_mode'):
+            point_selection = self.options.get('point_selection')
+            trans_option = self.options.get('trans_option')
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            if point_selection is None:
+                qs = PointLogBase.objects.filter(removed=False).annotate(
+                current_level_name=Subquery(
+                    LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+                    )
                 )
-            )
-            qs.values('is_transaction', 'current_level_name', 'amount')
-        else:
-            qs = PointLogBase.objects.filter(removed=False).filter(point_name=self.point_id_name_map[int(point_selection)]).annotate(
-            current_level_name=Subquery(
-                LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
-                )
-            )
-            qs.values('is_transaction', 'current_level_name', 'amount')
-        if not qs.exists():
-            raise NoData('資料不足')
-
-        now = timezone.now()
-        member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
-        data_check = []
-        for level in member_level:
-            if trans_option == self.TRANS:
-                is_trans = True
+                qs.values('is_transaction', 'current_level_name', 'amount')
             else:
-                is_trans = False
-            data = []
-            for days in self.trace_days:
-                date = now - datetime.timedelta(days=days)
-                qs_result_dict = qs.filter(current_level_name=level, is_transaction=is_trans).filter(amount__lt=0, datetime__lt=date).aggregate(value=Sum(Abs('amount')))
-                result = 0
-                if qs_result_dict.get('value'):
-                    result = qs_result_dict.get('value')
-                data.append(abs(result))
-            notes = {
-                'tooltip_value': f'{{data}} 點'
-            }
-            data_check.append(set(data))
+                qs = PointLogBase.objects.filter(removed=False).filter(point_name=self.point_id_name_map[int(point_selection)]).annotate(
+                current_level_name=Subquery(
+                    LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+                    )
+                )
+                qs.values('is_transaction', 'current_level_name', 'amount')
+            if not qs.exists():
+                raise NoData('資料不足')
 
-            self.create_label(name=level, data=data, notes=notes)
-        data_check_count = 0
-        for d_check in data_check:
-            if d_check == {0} or d_check == {None}:
-                data_check_count += 1
-        if data_check_count == len(data_check):
-            raise NoData('資料不足')
+            now = timezone.now()
+            member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
+            data_check = []
+            for level in member_level:
+                if trans_option == self.TRANS:
+                    is_trans = True
+                else:
+                    is_trans = False
+                data = []
+                last_date = now - datetime.timedelta(days=1)
+                last_date_res_dict = qs.filter(current_level_name=level, is_transaction=is_trans).filter(amount__lt=0, datetime__lt=last_date).aggregate(value=Sum(Abs('amount')))
+                last_date_res = 0
+                if last_date_res_dict.get('value'):
+                    last_date_res = abs(last_date_res_dict.get('value'))
+                for days in self.trace_days:
+                    date = now - datetime.timedelta(days=days)
+                    res_dict = qs.filter(current_level_name=level, is_transaction=is_trans).filter(amount__lt=0, datetime__lt=date).aggregate(value=Sum(Abs('amount')))
+                    result = 0
+                    if res_dict.get('value'):
+                        result = abs(res_dict.get('value'))
+                    if last_date_res != 0:
+                        result = str(result) + '(' + '{:.1%}'.format(result/last_date_res) + ')'
+                    data.append(result)
+                notes = {
+                    'tooltip_value': f'{{data}} 點'
+                }
+                data_check.append(set(data))
+
+                self.create_label(name=level, data=data, notes=notes)
+            data_check_count = 0
+            for d_check in data_check:
+                if d_check == {0} or d_check == {None}:
+                    data_check_count += 1
+            if data_check_count == len(data_check):
+                raise NoData('資料不足')
+        else:
+            point_selection = self.options.get('point_selection')
+            trans_option = self.options.get('trans_option')
+            self.trace_days = self.options.get('trace_days', self.trace_days)
+            if point_selection is None:
+                qs = PointLogBase.objects.filter(removed=False).annotate(
+                current_level_name=Subquery(
+                    LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+                    )
+                )
+                qs.values('is_transaction', 'current_level_name', 'amount')
+            else:
+                qs = PointLogBase.objects.filter(removed=False).filter(point_name=self.point_id_name_map[int(point_selection)]).annotate(
+                current_level_name=Subquery(
+                    LevelLogBase.objects.filter(clientbase_id=OuterRef('clientbase_id')).order_by('-from_datetime').values('to_level__name')[:1]
+                    )
+                )
+                qs.values('is_transaction', 'current_level_name', 'amount')
+            if not qs.exists():
+                raise NoData('資料不足')
+
+            now = timezone.now()
+            member_level = list(MemberLevelBase.objects.values_list('name', flat=True))
+            data_check = []
+            for level in member_level:
+                if trans_option == self.TRANS:
+                    is_trans = True
+                else:
+                    is_trans = False
+                data = []
+                for days in self.trace_days:
+                    date = now - datetime.timedelta(days=days)
+                    qs_result_dict = qs.filter(current_level_name=level, is_transaction=is_trans).filter(amount__lt=0, datetime__lt=date).aggregate(value=Sum(Abs('amount')))
+                    result = 0
+                    if qs_result_dict.get('value'):
+                        result = qs_result_dict.get('value')
+                    data.append(abs(result))
+                notes = {
+                    'tooltip_value': f'{{data}} 點'
+                }
+                data_check.append(set(data))
+
+                self.create_label(name=level, data=data, notes=notes)
+            data_check_count = 0
+            for d_check in data_check:
+                if d_check == {0} or d_check == {None}:
+                    data_check_count += 1
+            if data_check_count == len(data_check):
+                raise NoData('資料不足')
+
 
 @trend_charts.chart(name='等級給點折線圖')
 class PointGiveLevelTrend(LineChart):
