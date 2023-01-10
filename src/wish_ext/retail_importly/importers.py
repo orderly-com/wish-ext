@@ -198,10 +198,10 @@ class OrderImporter(DataImporter):
     def create_productbases(self):
         product_map = {}
         products = list(
-            RetailProduct.objects.filter(team=self.team).filter(removed=False).values_list('external_id', 'id')
+            RetailProduct.objects.filter(team=self.team).filter(removed=False).values('external_id', 'id', 'name', 'price')
         )
-        for external_id, product_id in products:
-            product_map[external_id] = RetailProduct(id=product_id)
+        for product in products:
+            product_map[product['external_id']] = RetailProduct(**product)
         productbases_to_create = []
         rows = list(self.datalist.datalistrow_set.values('product__external_id', 'id', 'orderrow__id', 'product__name', 'product__price'))
         products_to_update = []
