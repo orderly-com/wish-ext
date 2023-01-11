@@ -118,7 +118,7 @@ class OrderImporter(DataImporter):
             'order__id', 'order__external_id', 'order__clientbase_id', 'order__datetime', 'order__brand_id',
             'order__status', 'order__attributions'
         ):
-
+            order['order__status'] = order['order__status'] | PurchaseBase.STATUS_CONFIRMED
             brand_id = brand_map.get(order['order__brand_id'])
             if order['order__external_id'] in orderbase_map:
                 orderbase = orderbase_map[order['order__external_id']]
